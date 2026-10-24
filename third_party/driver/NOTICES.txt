@@ -1,0 +1,43 @@
+OmniCore Host third-party driver distribution
+
+libusbK 3.1.0.0
+  Official release: https://github.com/mcuee/libusbk/releases/tag/V3.1.0.0
+  Mirror/checksum: https://sourceforge.net/projects/libusbk/files/libusbK-release/3.1.0.0/
+  libusbK.sys and libusbK.dll are unmodified official release files.
+  The x64 kernel SHA256 is 1df66ff22e2eaec27180756d90926ca5b07e8bcf6b0e4e3c56471e63a3a05fa6.
+  The release package/user DLL version is 3.1.0.0; the kernel file's own version resource is
+  3.0.7.0. This is how the official release is packaged, not a locally changed driver.
+  Copyright Travis Lee Robinson and other named contributors; see libusbK LICENSE and AUTHORS files.
+  libusbK components are BSD licensed or dual BSD/GPL, as stated in the included source.
+  The compatibility libusb0 DLL is included by libwdi's official INF template and retains its own notices.
+  Microsoft WDF coinstaller in the official distribution remains unmodified. Modern Windows normally
+  uses its inbox KMDF framework. This package is intended only for Windows 10/11 x64.
+
+libwdi 1.5.1
+  https://github.com/pbatard/libwdi/releases/tag/v1.5.1
+  Copyright Pete Batard and contributors. GNU LGPL version 3 or later.
+  Dynamically loaded by och-driver.exe. The library can be replaced by a compatible rebuilt version.
+  Corresponding source is included in sources/libwdi-v1.5.1.zip.
+  Local source changes: embedder_files.h uses zero-padded WdfCoInstaller01009.dll filenames for the
+  official libusbK 3.1.0.0 bundle. The build script applies this two-line filename patch and generates
+  config.h enabling only x64 and libusbK, WDF_VER=1009, and standard logging. No signing logic changed.
+  Build with MinGW-w64 GCC using driver-build/build-driver.ps1; extract the official libusbK binary
+  distribution under third_party/driver/libusbK-3.1.0.0 and the libwdi source under
+  third_party/driver/libwdi-1.5.1 in the project layout shown in that script.
+  Replacing/debugging the LGPL library is permitted. No restrictions on reverse engineering for
+  debugging LGPL modifications are imposed by this distribution.
+
+MinGW/GCC runtime
+  The helper and host use statically linked GCC/MinGW runtime code with its runtime-library exception.
+  See mingw/ for GCC and mingw-w64 copyright and license notices.
+
+Installer build tool (not a runtime dependency)
+  Inno Setup 6.2.2, https://github.com/jrsoftware/issrc/releases/tag/is-6_2_2
+  Copyright Jordan Russell and Martijn Laan. The official installer was signature-verified, and its
+  compiler was extracted into the project without installing system associations or changing PATH.
+  The tool's license is retained in tools/installer/inno-6.2.2/app/license.txt in the source project.
+  innoextract 1.9 (Zlib license), https://github.com/dscharrer/innoextract/releases/tag/1.9,
+  was used for release validation only and is not required to rebuild the installer.
+
+Application binaries and setup.exe are currently unsigned. This is independent of the valid
+Authenticode signatures on the unmodified kernel driver. No code-signing identity is implied.

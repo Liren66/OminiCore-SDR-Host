@@ -1,0 +1,21 @@
+# Format/transaction fixture only; not a recommended low-pass filter design.
+# A single nonzero tap. No RF response or exact unity-gain claim is made.
+# Coefficient columns are TX, RX. Loading leaves the selected FIR disabled.
+TX 3 GAIN 0 INT 1
+RX 3 GAIN 0 DEC 1
+32767, 32767
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0
+0, 0

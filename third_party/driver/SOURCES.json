@@ -1,0 +1,37 @@
+[
+  {
+    "name": "libusbK-3.1.0.0-bin.7z",
+    "url": "https://github.com/mcuee/libusbk/releases/download/V3.1.0.0/libusbK-3.1.0.0-bin.7z",
+    "license": "BSD / component notices",
+    "sha256": "38605d8d5a86f408a4b7bec60f6d4a096050eee72f89a63a8d5be125252d3fe7",
+    "bytes": 6533139
+  },
+  {
+    "name": "libusbK-3.1.0.0-src.7z",
+    "url": "https://github.com/mcuee/libusbk/releases/download/V3.1.0.0/libusbK-3.1.0.0-src.7z",
+    "license": "BSD / GPL / component notices",
+    "sha256": "e10210802d234d2ba3ad233089bb4e94a3b9e1ec5d38fc887868d3c7a6e7d477",
+    "bytes": 1418530
+  },
+  {
+    "name": "libwdi-v1.5.1.zip",
+    "url": "https://github.com/pbatard/libwdi/archive/refs/tags/v1.5.1.zip",
+    "license": "LGPL-3.0-or-later",
+    "sha256": "746547aaf927cae44c75512d763941805928427f4ba4df3dbb40c3f7f561821e",
+    "bytes": 338305
+  },
+  {
+    "name": "innosetup-6.2.2.exe",
+    "url": "https://github.com/jrsoftware/issrc/releases/download/is-6_2_2/innosetup-6.2.2.exe",
+    "license": "Inno Setup license",
+    "sha256": "8117d10d00a2ad33a1390978ea3872861c330e087914410a6377b22c4c5b8563",
+    "bytes": 4722512
+  },
+  {
+    "name": "innoextract-1.9-windows.zip",
+    "url": "https://github.com/dscharrer/innoextract/releases/download/1.9/innoextract-1.9-windows.zip",
+    "license": "Zlib",
+    "sha256": "6989342c9b026a00a72a38f23b62a8e6a22cc5de69805cf47d68ac2fec993065",
+    "bytes": 520705
+  }
+]

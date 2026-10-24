@@ -1,0 +1,306 @@
+/* OmniCore Host public ABI 1. SPDX-License-Identifier: MIT */
+#ifndef OMNICORE_OCH_H
+#define OMNICORE_OCH_H
+#include <stddef.h>
+#include <stdint.h>
+#if defined(_WIN32)
+# if defined(OCH_BUILD)
+#  define OCH_API __declspec(dllexport)
+# else
+#  define OCH_API __declspec(dllimport)
+# endif
+#else
+# define OCH_API __attribute__((visibility("default")))
+#endif
+#ifdef __cplusplus
+extern "C" {
+#endif
+#define OCH_ABI_VERSION 1u
+#define OCH_VERSION "0.4.1"
+#define OCH_PPS_LOCK_TOLERANCE_PPM 1
+typedef struct och_device och_device;
+typedef struct och_stream och_stream;
+typedef enum och_result {
+    OCH_OK=0, OCH_TIMEOUT=-1, OCH_INVALID=-2, OCH_NOT_FOUND=-3,
+    OCH_BUSY=-4, OCH_IO=-5, OCH_UNSUPPORTED=-6, OCH_STOPPED=-7,
+    OCH_BUFFER_SMALL=-8, OCH_PROTOCOL=-9
+} och_result;
+typedef enum och_direction { OCH_RX=0, OCH_TX=1 } och_direction;
+typedef enum och_format { OCH_PACKED12=0, OCH_SC16=1, OCH_FC32=2, OCH_SC8=3 } och_format;
+enum { OCH_META_START=1u, OCH_META_DISCONTINUITY=2u, OCH_META_HOST_OVERFLOW=4u,
+       OCH_META_DEVICE_OVERFLOW=8u, OCH_META_TIME_UNKNOWN=16u,
+       OCH_META_RECONFIGURED=32u };
+enum { OCH_EVENT_DEVICE=1, OCH_EVENT_RX_SYNC=2, OCH_EVENT_HOST_OVERFLOW=3,
+       OCH_EVENT_TRANSPORT=4, OCH_EVENT_TX_STARVED=5, OCH_EVENT_RECONFIGURED=6 };
+typedef struct och_device_info {
+    uint32_t struct_size, abi_version;
+    char serial[128], name[128], driver[32], firmware[128];
+    uint32_t usb_speed_mbps, rx_channels, tx_channels, hardware_timestamps;
+    uint32_t max_sample_rate;
+} och_device_info;
+/* Shared sample clock. Channel masks: 0=disabled, 1=channel1, 2=channel2, 3=both.
+ * All frequencies here are Hz, gain/attenuation are dB. No implicit TX start. */
+typedef struct och_config {
+    uint32_t struct_size, sample_rate, rx_mask, tx_mask;
+    uint64_t rx_frequency, tx_frequency;
+    uint32_t rx_bandwidth, tx_bandwidth;
+    double rx_gain[2], tx_attenuation[2];
+    uint32_t rx_agc; /* 0 manual, 1 fast, 2 slow, 3 hybrid (device supported modes). */
+    uint32_t usb_iq_bits; /* 0 or 12: legacy packed12. 8: signed8 wire, requires both masks=3.
+                          * Occupies the first former reserved slot; ABI 1 size is unchanged.
+                          * Destroy all streams before changing the wire format. */
+    uint32_t reserved[6];
+} och_config;
+typedef struct och_stream_args {
+    uint32_t struct_size, direction, format;
+    uint32_t transfer_bytes; /* default196608, multiple49152, max1048576 */
+    uint32_t usb_queue_depth; /* default32 */
+    uint32_t host_buffer_bytes; /* default64MiB, allocated before start */
+    uint32_t reserved[10];
+} och_stream_args;
+typedef struct och_metadata {
+    uint32_t struct_size, flags;
+    uint64_t epoch; /* increases on each complete RX preamble */
+    uint64_t sample_index; /* per-channel position within this epoch, NOT a HW timestamp */
+    uint64_t host_dropped_samples; /* known local loss since previous delivered block */
+    int64_t device_dropped_samples; /* -1: unavailable in current FPGA protocol */
+    uint64_t host_monotonic_ns; /* observation time, NOT sample time */
+} och_metadata;
+typedef struct och_stats {
+    uint32_t struct_size, running;
+    uint64_t usb_bytes, samples, host_dropped_samples, headers, resyncs;
+    uint64_t host_queue_bytes, host_queue_peak_bytes, usb_queue_pending;
+    uint64_t transfer_errors, device_overflows, device_underflows, event_drops;
+    uint64_t tx_starvation_events, elapsed_ns, tx_padding_samples;
+} och_stats;
+typedef struct och_event {
+    uint32_t struct_size, type;
+    uint64_t sequence, host_monotonic_ns, epoch;
+    char message[512];
+} och_event;
+/* AD9361 hardware FIR. Both physical channels in the selected direction share
+ * these coefficients. get returns the last configuration verified by SDK SPI
+ * readback; set verifies hardware again. No host-side software FIR is implied. */
+typedef struct och_fir_config {
+    uint32_t struct_size, direction, channel_mask, factor, tap_count;
+    int32_t gain_db;
+    uint32_t enabled, verified, crc32;
+    int16_t coefficients[128];
+    uint32_t reserved[7];
+} och_fir_config;
+/* Clock order RX: BBPLL, ADC, R2, R1, RF, sample rate;
+ * TX: BBPLL, DAC, T2, T1, TF, sample rate. All values are Hz.
+ * reference_hz is read-only (0 on set means preserve it). */
+typedef struct och_clock_config {
+    uint32_t struct_size, reference_hz, rx_hz[6], tx_hz[6], reserved[8];
+} och_clock_config;
+/* AD9361 RX tracking shared by both physical receive channels. DC controls
+ * RF and baseband DC tracking together; IQ controls quadrature tracking.
+ * Disabling tracking preserves existing correction coefficients; IQ phase/gain
+ * correction stays enabled. Not a host IQ filter or TX calibration. */
+typedef struct och_rx_correction_config {
+    uint32_t struct_size, dc_enabled, iq_enabled, reserved[5];
+} och_rx_correction_config;
+typedef enum och_signal_source { OCH_SOURCE_INTERNAL=0, OCH_SOURCE_EXTERNAL=1 } och_signal_source;
+/* Nominal RF frequencies in Hz, not measurements of an external signal.
+ * External LO input must be twice the nominal RF frequency (70 MHz..4 GHz).
+ * Returning to internal restores the SDK's saved internal PLL frequency. */
+typedef struct och_lo_source_config {
+    uint32_t struct_size, rx_source, tx_source, reserved0;
+    uint64_t rx_frequency, tx_frequency;
+    uint32_t reserved[8];
+} och_lo_source_config;
+/* ADF4002 disciplines the board's 40 MHz oscillator from a 10 MHz input.
+ * The schematic connects MUXOUT only to LED D5, with no processor feedback.
+ * chip_verified/led_known remain 0; led_on remains -1.
+ * Since 0.3.4, lock_known/locked describe PPS frequency monitoring, NOT the
+ * ADF4002 hardware lock. A valid, fresh PPS measurement gives lock_known=1;
+ * locked=1 means the DATA_CLK error is within +/-1 ppm (inclusive).
+ * Disabled/absent/invalid/unsupported/failed PPS monitoring gives
+ * lock_known=0, locked=-1: hide the lock indicator and judge PLL lock by D5.
+ * Reference selection does not require PPS or wait for frequency lock.
+ * gpio_verified describes processor GPIO pad readback, not ADF4002 readback.
+ * led_mode is 0=off or 1=digital lock indication; it is not observed LED state.
+ * source is meaningful only when source_known=1. A fault can leave cached
+ * source=0 with source_known=0 and last_error!=0; explicitly set internal to
+ * recover. These diagnostic fields occupy formerly reserved slots. */
+typedef struct och_reference_status {
+    uint32_t struct_size, source, initialized, gpio_verified, chip_verified;
+    uint32_t lock_known;
+    int32_t locked;
+    uint32_t led_known;
+    int32_t led_on;
+    uint32_t led_mode, reference_hz, oscillator_hz, r_counter, n_counter;
+    uint32_t source_known;
+    int32_t last_error;
+    uint32_t reserved[8];
+} och_reference_status;
+/* PPS is monitoring only; cold boot defaults off. Measured frequency and
+ * error_ppm are meaningful only when frequency_valid=1 (otherwise zero).
+ * age_ms=UINT32_MAX means no edge since enable/rearm. No UTC or IQ timestamp.
+ * Since 0.3.4, lock_known/locked use formerly reserved slots (size unchanged).
+ * Show locked only when lock_known=1; 1 means abs(error)<=1 ppm, 0 means
+ * outside tolerance. Otherwise locked=-1. This is not PLL/phase lock. */
+typedef enum och_pps_state {
+    OCH_PPS_DISABLED, OCH_PPS_WAITING, OCH_PPS_VALID, OCH_PPS_NO_SIGNAL,
+    OCH_PPS_INVALID_INTERVAL, OCH_PPS_CLOCK_UNAVAILABLE
+} och_pps_state;
+typedef struct och_pps_status {
+    uint32_t struct_size, available, enabled, state, signal_present, frequency_valid;
+    uint32_t nominal_hz, measured_hz, pulse_count, invalid_count, age_ms;
+    uint32_t raw_counter, hardware_timeout, lock_known;
+    double error_ppm;
+    int32_t locked;
+    uint32_t reserved[7];
+} och_pps_status;
+typedef struct och_reference_test_result {
+    uint32_t struct_size, gpio_verified, chip_verified, visual_confirmation_required;
+    uint32_t reserved[4];
+} och_reference_test_result;
+/* Best-effort HD3SS3220 startup snapshot from the existing CH32 EP83 log.
+ * NOT a live current measurement, USB-PD contract or LED GPIO readback.
+ * No timestamps/boot IDs exist in this firmware. Missing/conflicting logs
+ * remain unknown. Values are meaningful only when snapshot_valid is 1. */
+typedef struct och_power_status {
+    uint32_t struct_size, log_endpoint_present, snapshot_valid, conflicting_snapshots;
+    uint32_t attached_state, current_detected;
+    int32_t source_current_ma; /* -1 unknown, including USB-default advertisement */
+    int32_t supports_3a; /* -1 unknown/not attached as sink, 0 no, 1 yes */
+    uint32_t raw_08, raw_09, raw_0a;
+    uint32_t reserved[5];
+} och_power_status;
+/* timeout_ms: 0 returns this handle's cache; 1..2000 permits bounded EP83
+ * reads when no stream objects exist. During streaming, only cache is read.
+ * No log/no EP83/timeout is OCH_OK with snapshot_valid=0, never false 3 A.
+ * Successful reads consume debug bytes; cache lasts only for this handle. */
+OCH_API int och_get_power_status(och_device*, och_power_status*, uint32_t timeout_ms);
+OCH_API int och_get_fir(och_device*, och_direction, och_fir_config*);
+/* Typed configuration changes pause existing streams and restore only the
+ * directions that were running. Handles/buffers remain valid. RX leases must
+ * be released first (BUSY otherwise). Failure stops both directions and
+ * invalidates configuration; explicitly configure and recreate streams. */
+OCH_API int och_set_fir(och_device*, const och_fir_config*);
+OCH_API int och_set_fir_enabled(och_device*, uint32_t rx_enabled, uint32_t tx_enabled);
+OCH_API int och_get_clock(och_device*, och_clock_config*);
+OCH_API int och_set_clock(och_device*, const och_clock_config*);
+OCH_API int och_set_sample_rate(och_device*, uint32_t sample_rate_hz);
+/* Requires SDK system_info rx_correction=1. get reads both current enables.
+ * Setters preserve the other correction and verify readback. Unsupported
+ * firmware and unchanged settings do not pause streams. Changed settings
+ * use the same coordinated reconfiguration and failure semantics as above. */
+OCH_API int och_get_rx_correction(och_device*, och_rx_correction_config*);
+OCH_API int och_set_rx_dc_correction(och_device*, uint32_t enabled);
+OCH_API int och_set_rx_iq_correction(och_device*, uint32_t enabled);
+/* Requires SDK external_lo=1. Preserves the other direction, verifies source
+ * and nominal frequencies, and synchronizes the och_config frequency cache.
+ * Returning RX to another band also reads back band-clamped manual gains.
+ * configure preserves source selection; external frequency writes only declare
+ * the external generator's frequency, they cannot tune that generator. */
+OCH_API int och_get_lo_source(och_device*, och_lo_source_config*);
+OCH_API int och_set_rx_lo_source(och_device*, uint32_t source);
+OCH_API int och_set_tx_lo_source(och_device*, uint32_t source);
+/* Requires adf4002=1 and, for source changes, ref_source=1. Source 0 is internal
+ * free-running and source 1 enables discipline from the external 10 MHz input.
+ * No external-reference presence or lock guarantee is implied by success.
+ * Changes and self-test use coordinated stream pause/restart. The test flashes
+ * D5 three times with charge pump tri-stated and restores the previous source;
+ * a human must observe D5 to confirm chip communication. Unknown/failed source
+ * state is readable but cannot be a setter no-op or self-test starting state.
+ * Explicitly set internal to recover before testing; no RF reinit is implicit. */
+OCH_API int och_get_reference_status(och_device*, och_reference_status*);
+OCH_API int och_set_reference_source(och_device*, uint32_t source);
+OCH_API int och_test_reference(och_device*, och_reference_test_result*);
+/* Requires SDK pps_monitor=1 and PPS-capable FPGA. Both calls are safe during
+ * streaming (including an RX lease): no stop, reconfiguration or queue reset.
+ * Enable persists across handles/RF reinit, but not firmware restart. */
+OCH_API int och_get_pps_status(och_device*, och_pps_status*);
+OCH_API int och_set_pps_enabled(och_device*, uint32_t enabled);
+/* Board services added in 0.3.5; existing ABI 1 structures are unchanged.
+ * RGB defaults on at 15% channel scale; legacy 25% firmware is also supported.
+ * Fan automatic control defaults off.
+ * Output colors include the instantaneous blink phase. Fan duty is high time,
+ * not measured RPM. Invalid temperatures have value=0; always check valid.
+ * milli_celsius is Zynq die temperature; age_ms=UINT32_MAX means no sample. */
+typedef enum och_rgb_state {
+    OCH_RGB_OFF, OCH_RGB_INITIALIZING, OCH_RGB_IDLE, OCH_RGB_RX, OCH_RGB_TX,
+    OCH_RGB_DUPLEX, OCH_RGB_RECOVERING, OCH_RGB_FAULT, OCH_RGB_OVERTEMP
+} och_rgb_state;
+typedef struct och_rgb_status {
+    uint32_t struct_size, available, enabled, brightness_pct, state;
+    uint32_t red, green, blue, blink_hz, reserved[7];
+} och_rgb_status;
+typedef struct och_fan_status {
+    uint32_t struct_size, available, enabled, frequency_hz, duty_permille, target_permille;
+    uint32_t boost, failsafe, temperature_valid;
+    int32_t temperature_mc;
+    uint32_t temperature_age_ms, overtemperature, reserved[4];
+} och_fan_status;
+typedef struct och_core_temperature {
+    uint32_t struct_size, valid;
+    int32_t milli_celsius;
+    uint32_t age_ms, overtemperature, reserved[3];
+} och_core_temperature;
+/* Requires board_rgb / fan_control / core_temp capabilities respectively.
+ * These calls preserve active streams, queues and outstanding RX leases.
+ * Switches persist across RF reinit and host handles, not firmware restart. */
+OCH_API int och_get_rgb_status(och_device*, och_rgb_status*);
+OCH_API int och_set_rgb_enabled(och_device*, uint32_t enabled);
+OCH_API int och_get_fan_status(och_device*, och_fan_status*);
+OCH_API int och_set_fan_enabled(och_device*, uint32_t enabled);
+OCH_API int och_get_core_temperature(och_device*, och_core_temperature*);
+
+OCH_API const char* och_version(void);
+OCH_API const char* och_last_error(void); /* thread-local; valid until next failing call */
+OCH_API void och_default_config(och_config*);
+OCH_API void och_default_stream_args(och_stream_args*, och_direction);
+OCH_API int och_list(och_device_info* devices, size_t capacity, size_t* count);
+OCH_API int och_open(const char* serial, och_device**); /* NULL selects only connected device */
+OCH_API int och_close(och_device*); /* destroy streams first; otherwise BUSY */
+OCH_API int och_get_info(och_device*, och_device_info*);
+/* With streams: channel masks must stay unchanged; identical config is a no-op.
+ * RX drops queued old samples and reports RECONFIGURED/START/DISCONTINUITY in
+ * the next epoch. Running TX discards old queued/in-flight data (delivery of
+ * cancelled transfers is unknown), prefills four zero blocks counted in
+ * tx_padding_samples, then resumes. OCH_EVENT_RECONFIGURED reports the gap.
+ * recv/send may return TIMEOUT during this transaction; retry normally. */
+OCH_API int och_configure(och_device*, const och_config*);
+OCH_API int och_get_config(och_device*, och_config*); /* last successfully applied request on this handle */
+/* Raw SDK query or command, serialised with event reception. Mutations only while
+ * no stream exists; configure again afterwards. Reply is UTF-8, nul terminated. */
+OCH_API int och_command(och_device*, const char* command, char* reply, size_t capacity, uint32_t timeout_ms);
+OCH_API int och_poll_event(och_device*, och_event*, uint32_t timeout_ms);
+OCH_API int och_create_stream(och_device*, const och_stream_args*, och_stream**);
+/* BUSY (outstanding RX lease) retains the handle. On OK or IO the handle is
+ * destroyed; IO reports a hardware-stop error. Do not retry a freed handle.
+ * close/destroy must not race other operations on that device/stream. */
+OCH_API int och_destroy_stream(och_stream*);
+OCH_API int och_start(och_stream*); /* TX: queue samples with send() before start */
+OCH_API int och_stop(och_stream*, uint32_t timeout_ms);
+/* Drain host/USB TX, padding the final wire block with zero IQ if required.
+ * No concurrent send allowed. This is not an RF end-of-burst acknowledgement.
+ * Finite EOF can report tail underflow/starvation before stop; events are retained. */
+OCH_API int och_flush(och_stream*, uint32_t timeout_ms);
+/* Sample counts are per channel. Layout: time-major interleaved channels.
+ * sc16: signed I,Q left-aligned; fc32: normalized I,Q. In 8-bit wire mode,
+ * sc16=sign8*256, fc32=sign8/128, packed12 expands with four zero low bits.
+ * TX retains the high 8 bits after the existing 12-bit quantization.
+ * sc8 is signed I,Q bytes (8-bit wire mode only); other formats keep their sizes.
+ * One producer per TX stream and one consumer per RX stream. RX/TX concurrent.
+ * recv never combines epochs or discontinuities into one returned buffer. */
+OCH_API int och_recv(och_stream*, void* samples, size_t capacity_samples,
+                     size_t* received, och_metadata*, uint32_t timeout_ms);
+OCH_API int och_send(och_stream*, const void* samples, size_t samples_per_channel,
+                     size_t* accepted, uint32_t timeout_ms);
+/* Zero-copy application view of current wire RX buffers; no conversion:
+ * 3 bytes/complex sample for 12-bit, 2 for 8-bit, independent of args.format.
+ * A single
+ * lease per stream; release before recv/acquire/destroy. Core USB->ring copy
+ * still occurs. Capacity/size measured in bytes. Lease invalid after release. */
+OCH_API int och_rx_acquire(och_stream*, const void** data, size_t* bytes, och_metadata*, uint32_t timeout_ms);
+OCH_API int och_rx_release(och_stream*);
+OCH_API int och_get_stats(och_stream*, och_stats*);
+OCH_API size_t och_sample_size(och_format format); /* per complex channel sample */
+#ifdef __cplusplus
+}
+#endif
+#endif

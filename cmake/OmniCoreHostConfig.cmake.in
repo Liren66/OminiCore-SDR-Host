@@ -1,0 +1,48 @@
+@PACKAGE_INIT@
+
+if(NOT WIN32)
+  set(OmniCoreHost_FOUND FALSE)
+  set(OmniCoreHost_NOT_FOUND_MESSAGE "This OmniCore Host binary package supports Windows x64 only.")
+  return()
+endif()
+if(DEFINED CMAKE_SIZEOF_VOID_P AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  set(OmniCoreHost_FOUND FALSE)
+  set(OmniCoreHost_NOT_FOUND_MESSAGE "OmniCore Host requires an x64 consumer; configure MSVC with -A x64.")
+  return()
+endif()
+if(CMAKE_GENERATOR_PLATFORM MATCHES "[Aa][Rr][Mm]" OR CMAKE_VS_PLATFORM_NAME MATCHES "[Aa][Rr][Mm]" OR CMAKE_SYSTEM_PROCESSOR MATCHES "^([Aa][Rr][Mm]64|aarch64)$")
+  set(OmniCoreHost_FOUND FALSE)
+  set(OmniCoreHost_NOT_FOUND_MESSAGE "The packaged OmniCore Host DLL targets x64, not ARM64.")
+  return()
+endif()
+
+# The exported target carries the include directory and MinGW import library.
+# The public DLL boundary is C ABI 1; the C++ wrapper is entirely header-only.
+include("${CMAKE_CURRENT_LIST_DIR}/OmniCoreHostTargets.cmake")
+set(OmniCoreHost_VERSION "@PROJECT_VERSION@")
+set(OmniCoreHost_ABI_VERSION 1)
+set_and_check(OmniCoreHost_RUNTIME_DIR "${PACKAGE_PREFIX_DIR}/bin")
+set_and_check(OmniCoreHost_INCLUDE_DIR "${PACKAGE_PREFIX_DIR}/include")
+
+if(MSVC)
+  # lib.exe creates the native COFF import library from the actual DLL export table.
+  # Do not pass MinGW's .dll.a archive to the Microsoft linker.
+  set(_och_msvc_implib "${PACKAGE_PREFIX_DIR}/lib/omnicore.lib")
+  if(NOT EXISTS "${_och_msvc_implib}")
+    set(OmniCoreHost_FOUND FALSE)
+    set(OmniCoreHost_NOT_FOUND_MESSAGE
+      "MSVC import library is missing: ${_och_msvc_implib}. Run tools/installer/build-msvc-import.ps1 before packaging, or use lib /machine:x64 /def:omnicore.def /out:omnicore.lib.")
+    return()
+  endif()
+  set_property(TARGET OmniCore::omnicore PROPERTY IMPORTED_IMPLIB "${_och_msvc_implib}")
+  get_target_property(_och_configs OmniCore::omnicore IMPORTED_CONFIGURATIONS)
+  foreach(_och_config IN LISTS _och_configs)
+    string(TOUPPER "${_och_config}" _och_config_upper)
+    set_property(TARGET OmniCore::omnicore PROPERTY "IMPORTED_IMPLIB_${_och_config_upper}" "${_och_msvc_implib}")
+  endforeach()
+  unset(_och_msvc_implib)
+  unset(_och_configs)
+  unset(_och_config)
+  unset(_och_config_upper)
+endif()
+check_required_components(OmniCoreHost)
