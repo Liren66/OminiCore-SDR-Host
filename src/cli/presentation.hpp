@@ -418,7 +418,7 @@ inline void device(const och_device_info& i, bool detailed, std::ostream& out) {
         const tone t = i.usb_speed_mbps >= 5000 ? tone::good : tone::warn;
         field("Negotiated speed", detail::fixed(static_cast<double>(i.usb_speed_mbps) / 1000, 1) + " Gbit/s  (" +
               (i.usb_speed_mbps >= 10000 ? "SuperSpeed+" : i.usb_speed_mbps >= 5000 ? "SuperSpeed" :
-               i.usb_speed_mbps >= 480 ? "High Speed - IQ streaming limited" : "Full/Low Speed") + ")", out, t);
+               i.usb_speed_mbps >= 480 ? "High-Speed, USB 2.0" : "Full-Speed, unsupported") + ")", out, t);
     } else field("Negotiated speed", "Not queried - use och info", out, tone::muted);
     group("RF capabilities", out);
     field("RX / TX channels", std::to_string(i.rx_channels) + " / " + std::to_string(i.tx_channels), out);

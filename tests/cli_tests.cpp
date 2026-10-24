@@ -269,7 +269,7 @@ void device_views() {
     const auto info = plain([](std::ostream& o) { p::device(sample_device(), true, o); });
     CHECK(has(info, "OmniCore Host " OCH_VERSION) && has(info, "5.0 Gbit/s  (SuperSpeed)") && has(info, "SDK_CMD_1.0"));
     auto slow = sample_device(); slow.usb_speed_mbps = 480;
-    CHECK(has(plain([&](std::ostream& o) { p::device(slow, true, o); }), "High Speed - IQ streaming limited"));
+    CHECK(has(plain([&](std::ostream& o) { p::device(slow, true, o); }), "0.5 Gbit/s  (High-Speed, USB 2.0)"));
     auto weird = sample_device(); std::strcpy(weird.name, "Bad\x1b[31mName\xC3\xA9");
     const auto escaped = plain([&](std::ostream& o) { p::device(weird, false, o); });
     CHECK(has(escaped, "Bad\\x1B[31mName\\xC3\\xA9"));

@@ -69,14 +69,14 @@ s.box(X0 + bw + 16, y, bw, h, 'libusbK  ·  数据面', '批量 IQ 传输 · 端
 # 5. link
 y = 606; layer(y - 2, 30, '链路')
 s.rect(X0, y, W, 28, '#2f2e2b', None, 14)
-s.text(X0 + W / 2, y + 19, 'USB 3.0 SuperSpeed  ·  5 Gbit/s  ·  VID 1A86 / PID 5537', 13, '#ffffff', 600, 'middle')
+s.text(X0 + W / 2, y + 19, 'USB 3.0 SuperSpeed 5 Gbit/s（或 USB 2.0 High-Speed 480 Mbit/s）  ·  VID 1A86 / PID 5537', 13, '#ffffff', 600, 'middle')
 
 # 6. hardware
 y = 650; h = 196; layer(y, h, '硬件')
 s.rect(X0, y, W, h, '#f7f6f3', NEUTRAL_S, 10)
 s.text(X0 + 14, y + 22, 'OmniCoreSDR 板卡', 13, INK, 700)
 by = y + 38
-s.box(X0 + 14, by, 140, 92, 'CH32H417', ['USB 3.0 桥', '诊断 / 清理协议 v4'], '#ffffff', NEUTRAL_S)
+s.box(X0 + 14, by, 140, 92, 'CH32H417', ['USB 3.0 / 2.0 桥', '诊断 / 清理协议 v4'], '#ffffff', NEUTRAL_S)
 zx = X0 + 198; zw = 350
 s.rect(zx, by, zw, 92, '#ffffff', NEUTRAL_S, 8)
 s.text(zx + 12, by + 20, 'Zynq', 13, INK, 700)

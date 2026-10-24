@@ -3,12 +3,13 @@ from svgkit import *
 # ---------------------------------------------------------------- throughput
 groups = [
     # (direction, measured MB/s, theoretical MB/s, ratio % as reported by the test script from exact byte counts)
-    ('RX · 2 通道 · 61.44 MSPS', '12bit', [('RX', 367.4, 368.64, 99.7)]),
-    ('RX · 1 通道 · 61.44 MSPS', '12bit', [('RX', 183.4, 184.32, 99.5)]),
-    ('TX · 2 通道 · 61.44 MSPS', '12bit', [('TX', 362.0, 368.64, 98.2)]),
-    ('2RX + 2TX · 30.72 MSPS', '12bit', [('RX', 183.4, 184.32, 99.5), ('TX', 180.7, 184.32, 98.1)]),
-    ('1RX + 1TX · 61.44 MSPS', '12bit', [('RX', 183.4, 184.32, 99.5), ('TX', 180.7, 184.32, 98.1)]),
-    ('2RX + 2TX · 50 MSPS', '8bit wire', [('RX', 199.0, 200.0, 99.5), ('TX', 196.2, 200.0, 98.1)]),
+    ('RX · 2 通道 · 61.44 MSPS', '12bit · 5 秒', [('RX', 367.2, 368.64, 99.6)]),
+    ('RX · 1 通道 · 61.44 MSPS', '12bit · 5 秒', [('RX', 183.6, 184.32, 99.6)]),
+    ('TX · 2 通道 · 61.44 MSPS', '12bit · 5 秒', [('TX', 362.0, 368.64, 98.2)]),
+    ('2RX + 2TX · 30.72 MSPS', '12bit · 5 秒', [('RX', 183.4, 184.32, 99.5), ('TX', 180.9, 184.32, 98.1)]),
+    ('1RX + 1TX · 61.44 MSPS', '12bit · 5 秒', [('RX', 183.8, 184.32, 99.7), ('TX', 180.7, 184.32, 98.1)]),
+    ('2RX + 2TX · 50 MSPS', '8bit wire · 5 秒', [('RX', 199.2, 200.0, 99.6), ('TX', 196.3, 200.0, 98.1)]),
+    ('2RX + 2TX · 61.44 MSPS', '8bit wire · 300 秒连续', [('RX', 245.7, 245.76, 100.0), ('TX', 245.7, 245.76, 100.0)]),
 ]
 BAR, GAP, GROUP_GAP = 16, 2, 22
 PX0, PW, MAXV = 290, 570, 400
@@ -17,7 +18,7 @@ top = 132
 height = top + sum(len(g[2]) * BAR + (len(g[2]) - 1) * GAP for g in groups) + GROUP_GAP * (len(groups) - 1) + 96
 s = Svg(1000, int(height), 'USB 吞吐实测', 'OCH 0.4.1 在 OmniCoreSDR 上的 bench 结果：实测 USB 吞吐与理论 wire 速率')
 s.text(28, 42, 'USB 吞吐实测', 20, INK, 700)
-s.text(28, 66, 'OCH 0.4.1 · ThinkPad E14 Gen 7 · Core Ultra 7 255H · Windows 11 25H2 · USB 5 Gbit/s · 每项 5 秒，含启停', 13, INK2)
+s.text(28, 66, 'OCH 0.4.2 · ThinkPad E14 Gen 7 · Core Ultra 7 255H · Windows 11 25H2 · USB 5 Gbit/s · 平均值含启停 · 2026-10-25', 13, INK2)
 # legend
 lx = 28; ly = 96
 for name, color in [('RX 实测', BLUE), ('TX 实测', ORANGE)]:
@@ -53,16 +54,16 @@ open('throughput.svg', 'w').write(s.render())
 # ---------------------------------------------------------------- test summary
 s = Svg(1000, 448, '测试结果', 'CLI 离线测试、运行时回归与 CLI 实板测试的结果和覆盖范围')
 s.text(28, 42, '测试结果', 20, INK, 700)
-s.text(28, 66, 'OCH 0.4.1 · 2026-10-24 · 离线测试不需要硬件；实板测试在 OmniCoreSDR 上运行 och.exe', 13, INK2)
+s.text(28, 66, 'OCH 0.4.2 · 2026-10-25 · 离线测试不需要硬件；实板测试在 OmniCoreSDR 上运行 och.exe', 13, INK2)
 
 def check_badge(x, y):
     s.rect(x, y, 86, 24, GOOD_T, '#9fd89f', 12)
     s.path(f'M{x + 12},{y + 12} l4,4 l8,-8', GOOD, 2.2)
-    s.text(x + 30, y + 16.5, '全部通过', 11.5, '#0a6b0a', 700)
+    s.text(x + 30, y + 16.5, '无失败', 11.5, '#0a6b0a', 700)
 
 suites = [('CLI 离线测试', '20 / 20', 'tests/cli_tests.cpp', '参数与数值解析 · FTR 校验 · 输出布局'),
           ('运行时回归', '91 / 91', 'tests/runtime_tests.cpp', '模拟 USB 设备 · 改参 · 校正 · PPS · 8bit'),
-          ('CLI 实板测试', '42 / 42', 'tests/hardware/cli_hardware_tests.ps1', '真实板卡 · 文件采集 · 播放 · 测速')]
+          ('CLI 实板测试', '42 / 42', 'tests/hardware/cli_hardware_tests.ps1', '0 失败 · 文件采集 · 播放 · 测速')]
 tw = (944 - 2 * 16) / 3
 for i, (name, num, src, desc) in enumerate(suites):
     x = 28 + i * (tw + 16); y = 90
@@ -92,5 +93,5 @@ for i, (name, n, lines) in enumerate(hw):
     s.text(x + cw - 12, y + 26, str(n), 22, BLUE_D, 700, 'end')
     for j, l in enumerate(lines):
         s.text(x + 12, y + 62 + j * 22, l, 11.5, INK2)
-    s.text(x + 12, y + 136, f'{n} / {n} 通过', 11, '#0a6b0a', 600)
+    s.text(x + 12, y + 136, f'{n} / {n} 无失败', 11, '#0a6b0a', 600)
 open('test-results.svg', 'w').write(s.render())

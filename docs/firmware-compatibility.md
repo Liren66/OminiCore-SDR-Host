@@ -16,7 +16,7 @@
 | 可选 2TX2RX 8bit 扩展 | SDK 格式命令与 FPGA signed8 路径 | 仅选择 8bit 时要求 iq_format=1 iq8_2t2r=1；默认 12bit 保持旧 SDK 兼容 |
 | CH32 | 已有诊断及流清理协议 v4 | USB 厂商请求 0xD0 的诊断版本 |
 | FPGA/IP | RX 启动时 16384 B 的 00..FF×64 头；现有 packed12 及通道布局 | 匹配本工程使用的 FPGA 构建；由数据流检测头 |
-| USB | SuperSpeed；数据端点 01/81，控制端点 02/82 | 枚举及打开时确认 |
+| USB | SuperSpeed 或 USB 2.0 High-Speed（480 Mbit/s）；数据端点 01/81，控制端点 02/82 | 枚举及打开时确认；Full-Speed（12 Mbit/s）不支持 |
 | Windows 驱动 | 发行包 libusbK 3.1.0.0 | och-driver check；实际安装仍受 Windows 策略约束 |
 
 旧 SDK 即使支持原始串口命令和 16 KiB 起始头，也可能缺少 OCH 所需的命令封装协议，不能直接假定兼容。版本不满足时基座明确失败，避免把超时/残留回复误认为新命令已成功。
@@ -40,3 +40,13 @@ CH32 的协议 v4 是使用原有诊断能力，不代表主机安装器为您�
 ## 0.3.5 板级 RGB 与风扇温控
 
 新增 RGB 开关/状态、风扇温控开关/状态和 Zynq 核心温度查询。使用新 FPGA BOARD_CTRL_AXI 及新版 SDK，能力标志为 `board_rgb=1 fan_control=1 core_temp=1`。当前 SDK 默认 RGB 开启、亮度 15%，风扇温控关闭；OCH 0.3.6 同时兼容旧版 25% 固件，亮度以设备回报为准；不改变已有 C ABI 结构或停止 IQ 流。详见 [板级控制及接口](board-control.md)。
+
+## USB 2.0 高速连接
+
+USB 2.0 需要同时使用更新后的 UHSIF 固件与重新构建的 OmniCoreHost。旧固件缺少 USBHS 控制端点和 0xD0 诊断/流清理实现，旧主机程序则会拒绝非 SuperSpeed 连接。
+
+HS/FS 配置描述符与 USB3 使用相同的端点分工：01/81 为 IQ 数据，02/82 为 USART1 控制，83 为调试文本。USBHS 的控制与调试 IN 使用小于最大包长的短包；复位、取消配置和清除端点 HALT 会同步处理桥接状态。OCH 支持 512 B 最大包长的 High-Speed，仍拒绝 64 B 最大包长的 Full-Speed。
+
+编译下载 CH32 固件并重新构建主机程序后，重新插拔设备，依次运行 `och-driver check`、`och find`、`och info`。USB 2.0 下预期显示 High-Speed / 0.5 Gbit/s（界面以一位小数显示 480 Mbit/s），且不再出现控制端点缺失、SuperSpeed 限制或 CH32 diagnostics unavailable。再通过 USB3 连接重复检查，并分别验证低采样率 RX/TX、停止重启与重新插拔。
+
+USB 2.0 的持续 IQ 吞吐需要上板实测；不要直接沿用 USB3 的高采样率吞吐结果。此修改未降低 SDK 的射频采样率范围，也未自动改变用户配置。源码静态检查不等于硬件验证，下载后应先确认控制通道，再选择低采样率测试数据流。

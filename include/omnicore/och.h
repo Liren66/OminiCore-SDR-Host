@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 #define OCH_ABI_VERSION 1u
-#define OCH_VERSION "0.4.1"
+#define OCH_VERSION "0.4.2"
 #define OCH_PPS_LOCK_TOLERANCE_PPM 1
 typedef struct och_device och_device;
 typedef struct och_stream och_stream;
@@ -35,7 +35,8 @@ enum { OCH_EVENT_DEVICE=1, OCH_EVENT_RX_SYNC=2, OCH_EVENT_HOST_OVERFLOW=3,
 typedef struct och_device_info {
     uint32_t struct_size, abi_version;
     char serial[128], name[128], driver[32], firmware[128];
-    uint32_t usb_speed_mbps, rx_channels, tx_channels, hardware_timestamps;
+    uint32_t usb_speed_mbps; /* 5000 SuperSpeed, 480 USB 2.0 High-Speed; 0 = not queried (och_find) */
+    uint32_t rx_channels, tx_channels, hardware_timestamps;
     uint32_t max_sample_rate;
 } och_device_info;
 /* Shared sample clock. Channel masks: 0=disabled, 1=channel1, 2=channel2, 3=both.

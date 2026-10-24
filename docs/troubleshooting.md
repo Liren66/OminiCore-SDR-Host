@@ -54,8 +54,8 @@ RX 的 RECONFIGURED、START、DISCONTINUITY 标志意味着新数据段，下游
 
 规范 set rx.lo-frequency 1G 使用 Hz，兼容 set rx_lo_freq 1000 使用旧 SDK 的 MHz。单位不对时先查看 och commands，不要靠尝试多个数量级猜测。
 
-## 与 UHD 和未来插件的关系
+## 与第三方软件的关系
 
-本工程参考分层方式。uhd_find_devices、现成 UHD block、MATLAB USRP 支持包不会因此自动识别 OmniCoreSDR。第三方工具需要单独适配，当前版本不包含这些插件。
+GNU Radio、MATLAB、SDRangel 等第三方软件不会自动识别 OmniCoreSDR，需要基于公共 C/C++ 接口单独编写适配层；当前版本不包含这些插件。
 
 外部 PPS 支持频率监控；开启后没有输入时显示 `no_signal`，频率无效。尚不支持硬件时间戳、精确定时 TX、PPS 闭环调频、设备间同步或多软件同时独占同一设备。首次发行安装器还需要在干净 Windows 主机及不同安全策略上实测。

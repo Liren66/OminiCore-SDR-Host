@@ -143,8 +143,7 @@ struct Usb {
             if(!api.queryInterface(h,0,&d))throw std::runtime_error("Cannot query interface");
             for(UCHAR i=0;i<d.bNumEndpoints;++i){WINUSB_PIPE_INFORMATION pi{};if(api.queryPipe(h,0,i,&pi)&&pi.PipeType==UsbdPipeTypeBulk)pipes[pi.PipeId]=pi;}
             if(!pipes.count(0x81)||!pipes.count(0x01))throw std::runtime_error("EP1 IN/OUT not found");
-            UCHAR speed=0;ULONG n=sizeof speed;api.queryDevice(h,DEVICE_SPEED,&n,&speed);
-            summary=L"libusbK (TX parallel) | Interface "+std::to_wstring(d.bInterfaceNumber)+L" | "+(pipes[0x81].MaximumPacketSize==1024?L"SuperSpeed":(speed==3?L"High-Speed":L"Full-Speed"))+L" | Bulk pipes: "+std::to_wstring(pipes.size());
+            summary=L"libusbK (TX parallel) | Interface "+std::to_wstring(d.bInterfaceNumber)+L" | "+(pipes[0x81].MaximumPacketSize==1024?L"SuperSpeed":(pipes[0x81].MaximumPacketSize==512?L"High-Speed":L"Full-Speed"))+L" | Bulk pipes: "+std::to_wstring(pipes.size());
         } catch(...) { close();throw; }
     }
     void parallelLimit(UCHAR ep,ULONG depth){

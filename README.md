@@ -1,15 +1,13 @@
 # OmniCore Host (OCH)
 
-OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 3.0 桥）的主机端软件：一个无图形界面的 C++17 运行库，加上命令行工具 `och` 和公共 C/C++ SDK。它负责设备发现、射频控制、连续 IQ 收发、RX 数据边界恢复和吞吐测试，可作为 OnAir、MATLAB、GNU Radio、SDRangel 等上层软件的适配基础。
+OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 桥）的主机端软件：一个无图形界面的 C++17 运行库，加上命令行工具 `och` 和公共 C/C++ SDK。它负责设备发现、射频控制、连续 IQ 收发、RX 数据边界恢复和吞吐测试，可作为 OnAir、MATLAB、GNU Radio、SDRangel 等上层软件的适配基础。
 
 | 项目 | 说明 |
 |---|---|
-| 当前版本 | **0.4.1**，C ABI 1 |
+| 当前版本 | **0.4.2**，C ABI 1 |
 | 平台 | Windows 10 / 11 x64，USB 3.x，libusbK 3.1.0.0 |
 | 语言 | C++17 运行库，纯 C ABI + 仅头文件 C++ RAII 包装 |
 | 许可证 | MIT（第三方组件沿用各自许可证） |
-
-架构参考 UHD 的设备、流、元数据、事件分层思路，但不包含 UHD 代码，也不是 UHD 二进制兼容驱动。
 
 ## 目录
 
@@ -42,6 +40,7 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 3.0 桥）的主机
 | RGB 与风扇温控 | RGB 状态灯（默认 15% 亮度）、按 Zynq XADC 温度调速的风扇 | 0.3.5 |
 | 8bit USB IQ | 2TX2RX 可选 signed8 传输，降低 USB 带宽占用；默认仍为 12bit | 0.4.0 |
 | 分层终端输出 | 彩色分组视图、实时进度条、吞吐汇总表；重定向时自动输出纯 ASCII | 0.4.1 |
+| USB 2.0 High-Speed | 支持 480 Mbit/s 连接（需更新 CH32 固件），适合低采样率；仍不支持 Full-Speed | 0.4.2 |
 
 ## 架构
 
@@ -51,7 +50,7 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 3.0 桥）的主机
 - **公共接口**：`och.h` 是纯 C ABI，`och.hpp` 是仅头文件的 C++ RAII 包装；DLL 边界不暴露 libusbK 句柄、Windows OVERLAPPED 或 FPGA 寄存器。
 - **核心运行库**：控制面逐条发送 SDK 命令并分离异步事件；数据面为 RX、TX 各维护独立的 USB 请求队列和有界环形队列，单生产者 / 单消费者。设备对象统一协调配置变更，在不销毁流的前提下暂停、改参和恢复。
 - **传输层**：libusbK，控制面与数据面使用不同端点。
-- **硬件**：CH32H417 提供 USB 3.0，Zynq PL 负责 IQ 打包、起始头和 PPS 测频，PS 上的 SDK 负责命令解析和射频驱动，AD9361 完成 2R2T 射频收发。
+- **硬件**：CH32H417 提供 USB 3.0 SuperSpeed（也支持 USB 2.0 High-Speed），Zynq PL 负责 IQ 打包、起始头和 PPS 测频，PS 上的 SDK 负责命令解析和射频驱动，AD9361 完成 2R2T 射频收发。
 
 线程模型、缓冲容量与性能设计见 [架构与性能设计](docs/architecture.md)。
 
@@ -60,7 +59,7 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 3.0 桥）的主机
 **主机**
 
 - Windows 10 / 11 x64（不支持 ARM64 或 32 位）
-- USB 3.x 主机接口；USB 2.0 链路下无法达到 IQ 流速率
+- USB 3.x 主机接口（5 Gbit/s）；也可在 USB 2.0 High-Speed（480 Mbit/s）下使用，但只适合低采样率，需要支持 USBHS 的 CH32 固件，见 [固件与协议依赖](docs/firmware-compatibility.md#usb-20-高速连接)
 - 运行 OCH 不需要安装 Visual Studio 或 MinGW
 
 **设备固件**
@@ -86,7 +85,7 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 3.0 桥）的主机
 
 ## 安装
 
-运行 `dist/OmniCoreHost-0.4.1-win64-setup.exe`，默认安装到 `C:\Program Files\OmniCore Host`，并将 `bin` 加入 PATH。安装包包含：
+运行 `dist/OmniCoreHost-0.4.2-win64-setup.exe`，默认安装到 `C:\Program Files\OmniCore Host`，并将 `bin` 加入 PATH。安装包包含：
 
 - `och.exe`、`omnicore.dll`、`libusbK.dll`
 - C/C++ 头文件、MinGW 与 MSVC 导入库、CMake 包配置
@@ -224,7 +223,7 @@ och bench --rx --sample-rate 61.44M --channels 1,2 --seconds 30          # 双 R
 och bench --tx --sample-rate 61.44M --channels 1,2 --seconds 30          # 双 TX 满速率（发射测试正弦）
 och bench --rx --tx --sample-rate 30.72M --channels 1,2 --seconds 30     # 2RX + 2TX
 och bench --rx --tx --sample-rate 61.44M --channels 1 --seconds 30       # 1RX + 1TX 满速率
-och bench --rx --tx --iq-bits 8 --sample-rate 50M --channels 1,2 --seconds 30   # 8bit 2RX + 2TX
+och bench --rx --tx --iq-bits 8 --sample-rate 61.44M --channels 1,2 --seconds 30   # 8bit 2RX + 2TX 满速率
 ```
 
 理论 wire 速率 = 采样率 × 通道数 × 每样本字节（12bit 为 3，8bit 为 2），MB/s 为十进制；实测结果见 [验证状态](#验证状态)。默认每方向 64 MiB 主机环形缓冲、32 个并行 USB 请求、每请求 196608 字节，可用 `--buffer-mib`、`--queue`、`--block` 调整；增大缓冲只能吸收短时调度停顿，不能弥补长期处理能力不足。
@@ -398,7 +397,7 @@ powershell -NoProfile -File packaging/build-package.ps1 -StageDir build/stage
 
 ## 验证状态
 
-**0.4.1**（2026-10-24）
+**0.4.2**（2026-10-25）
 
 | 测试条件 | |
 |---|---|
@@ -406,28 +405,38 @@ powershell -NoProfile -File packaging/build-package.ps1 -StageDir build/stage
 | 系统 | Windows 11 家庭版 25H2（build 26200.9711） |
 | USB | Intel USB 3.20 xHCI 控制器，链路 5 Gbit/s，libusbK 3.1.0.0 |
 | 板卡 | OmniCoreSDR，固件 `SDK_CMD_1.0_20261024_IQ8`（JTAG 加载） |
-| 参数 | bench 每项 5 秒，TX 衰减 60 dB，采集写入 NVMe SSD |
-
+| 参数 | bench 每项 5 秒（8bit 61.44 MSPS 另测 10 / 60 / 300 秒），TX 衰减 60 dB，采集写入 NVMe SSD |
 
 - 离线：CLI 测试 20/20，运行时回归 91/91。
-- CLI 实板测试 42 项全部通过，吞吐结果（每项 5 秒，平均值包含启停）：
+- CLI 实板测试 42 项，无失败。吞吐结果（每项 5 秒，平均值包含启停）：
 
 ![USB 吞吐实测](docs/images/throughput.svg)
 
-
 | 配置 | 方向 | 实测 MB/s | 理论 MB/s | 比例 | 主机丢样 / 传输错误 |
 |---|---|---:|---:|---:|---|
-| 2 通道 61.44 MSPS，12bit | RX | 367.4 | 368.6 | 99.7% | 0 / 0 |
-| 1 通道 61.44 MSPS，12bit | RX | 183.4 | 184.3 | 99.5% | 0 / 0 |
+| 2 通道 61.44 MSPS，12bit | RX | 367.2 | 368.6 | 99.6% | 0 / 0 |
+| 1 通道 61.44 MSPS，12bit | RX | 183.6 | 184.3 | 99.6% | 0 / 0 |
 | 2 通道 61.44 MSPS，12bit | TX | 362.0 | 368.6 | 98.2% | 0 / 0 |
-| 2RX + 2TX 30.72 MSPS，12bit | RX / TX | 183.4 / 180.7 | 184.3 | 99.5% / 98.1% | 0 / 0 |
-| 1RX + 1TX 61.44 MSPS，12bit | RX / TX | 183.4 / 180.7 | 184.3 | 99.5% / 98.1% | 0 / 0 |
-| 2RX + 2TX 50 MSPS，8bit | RX / TX | 199.0 / 196.2 | 200.0 | 99.5% / 98.1% | 0 / 0 |
+| 2RX + 2TX 30.72 MSPS，12bit | RX / TX | 183.4 / 180.9 | 184.3 | 99.5% / 98.1% | 0 / 0 |
+| 1RX + 1TX 61.44 MSPS，12bit | RX / TX | 183.8 / 180.7 | 184.3 | 99.7% / 98.1% | 0 / 0 |
+| 2RX + 2TX 50 MSPS，8bit | RX / TX | 199.2 / 196.3 | 200.0 | 99.6% / 98.1% | 0 / 0 |
+| 2RX + 2TX 61.44 MSPS，8bit，300 秒 | RX / TX | 245.7 / 245.7 | 245.8 | 100.0% / 100.0% | 0 / 0 |
+
+**8bit 2RX + 2TX @ 61.44 MSPS**
+
+| 时长 | RX MB/s | TX MB/s | 每通道样本（RX） | 溢出 / 欠流 / 重同步 | 主机丢样 / 传输错误 |
+|---|---:|---:|---:|---|---|
+| 10 秒 | 245.2 | 243.5 | 6.23 亿 | 0 / 0 / 0 | 0 / 0 |
+| 60 秒 | 245.7 | 245.4 | 36.9 亿 | 0 / 0 / 0 | 0 / 0 |
+| 300 秒 | 245.7 | 245.7 | 184.4 亿 | 0 / 0 / 0 | 0 / 0 |
+| 60 秒（0.4.2 正式构建） | 245.7 | 245.4 | 37.0 亿 | 0 / 0 / 0 | 0 / 0 |
+
+前三轮使用版本号更新为 0.4.2 之前、源码相同的构建，最后一轮为 0.4.2 正式构建；每轮都只有启动时的一次 RX 同步事件，没有设备溢出、欠流或重同步。0.4.0 在同一配置下的两轮 300 秒测试曾分别在约 263.5 秒和 88.8 秒出现一次 RX 溢出与 TX 欠流；本次为单轮结果，长期稳定性仍需更多轮次和不同主机确认。详见 [8bit 扩展验证](docs/iq8.md#042-复测6144-msps2026-10-25)。
 
 **0.4.0 长时间测试**
 
 - 8bit 2RX + 2TX 在 **50 MSPS 下连续 300 秒无新增错误**，RX/TX 各约 200 MB/s。
-- 8bit 61.44 MSPS 的两轮 300 秒测试分别在稳态约 263.5 秒和 88.8 秒出现一次 RX 溢出与 TX 欠流，**该速率尚不能标为持续零丢样**，原因未确定。
+- 8bit 61.44 MSPS 的两轮 300 秒测试分别在稳态约 263.5 秒和 88.8 秒出现一次 RX 溢出与 TX 欠流（复测见上）。
 - 12bit 2RX + 2TX 44.25 MSPS 连续 60 秒无错；9 项通道 / 格式矩阵通过。详见 [8bit 扩展验证](docs/iq8.md#实板验证2026-10-24)。
 
 **历史版本**

@@ -105,7 +105,7 @@ or antenna appropriate for your setup, or pass `-SkipTx`.
 
 At start-up the script prints the test conditions (OS, computer, CPU, memory, power source, USB controller and driver, capture disk, device firmware) and stores them under `environment` in the JSON report.
 
-Example run (2026-10-24; ThinkPad E14 Gen 7, Core Ultra 7 255H, Windows 11 25H2, Intel USB 3.20 xHCI at 5 Gbit/s):
+Example run (OCH 0.4.2, 2026-10-25; ThinkPad E14 Gen 7, Core Ultra 7 255H, Windows 11 25H2, Intel USB 3.20 xHCI at 5 Gbit/s):
 
 ![CLI hardware test output](../docs/images/cli-hwtest.png)
 

@@ -40,8 +40,10 @@ void och_device::open(const DeviceInfo& d) {
     require(owner.h!=nullptr,OCH_IO,"device mutex unavailable");
     require(!existed,OCH_BUSY,"device already owned by another OmniCore Host process");
     usb.open(d.path);require(usb.has(0x82)&&usb.has(0x02),OCH_PROTOCOL,"control endpoints 02/82 missing");
-    info.usb_speed_mbps=usb.pipes.at(0x81).MaximumPacketSize==1024?5000:480;
-    require(info.usb_speed_mbps==5000,OCH_UNSUPPORTED,"OmniCore Host requires the SuperSpeed USB3 connection");
+    const auto packet_size=usb.pipes.at(0x81).MaximumPacketSize;
+    info.usb_speed_mbps=packet_size==1024?5000:packet_size==512?480:12;
+    require(packet_size==1024 || packet_size==512,OCH_UNSUPPORTED,
+            "OmniCore Host requires USB 2.0 High-Speed (480 Mbit/s) or USB 3.0 SuperSpeed; Full-Speed is unsupported");
     usb.policy(0x82,RAW_IO,FALSE);usb.policy(0x82,ALLOW_PARTIAL_READS,TRUE);usb.policy(0x82,AUTO_FLUSH,FALSE);
     control_thread=std::thread([this]{control_loop();});
     auto p=command("host_protocol?",3000);

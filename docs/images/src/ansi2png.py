@@ -38,7 +38,7 @@ body{{margin:0;background:transparent;}}
 .tab{{background:{BG};color:#e8e8e8;font:13px "Segoe UI","Inter",sans-serif;height:30px;display:flex;align-items:center;padding:0 14px;border-radius:8px 8px 0 0;gap:8px}}
 .ico{{width:14px;height:14px;border-radius:3px;background:#2b5797;display:inline-block}}
 .dots{{margin-left:auto;display:flex;gap:18px;padding:0 16px 10px;color:#9a9a9a;font:13px sans-serif}}
-pre{{margin:0;padding:12px 16px 16px;color:{FG};font:15px/1.38 "Cascadia Mono","DejaVu Sans Mono",monospace;width:{cols}ch;white-space:pre}}
+pre{{margin:0;padding:12px 16px 16px;color:{FG};font:15px/1.38 "Cascadia Mono","DejaVu Sans Mono",monospace;width:{cols}ch;white-space:pre-wrap;overflow-wrap:anywhere}}
 </style></head><body><div class="win"><div class="bar"><div class="tab"><span class="ico"></span>{html.escape(title)}</div><div class="dots"><span>&#8212;</span><span>&#9744;</span><span>&#10005;</span></div></div><pre>{body}</pre></div></body></html>'''
 async def main(src, dst, title, cols, maxlines):
     text=open(src,encoding='utf-8').read()

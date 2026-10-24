@@ -1,4 +1,4 @@
-OmniCore Host (OCH) 0.4.1 — Windows 安装与驱动说明
+OmniCore Host (OCH) 0.4.2 — Windows 安装与驱动说明
 
 适用范围
   Windows 10 / Windows 11，原生 x64。当前发行包不支持 ARM64 或 32 位 Windows。
@@ -8,7 +8,7 @@ OmniCore Host (OCH) 0.4.1 — Windows 安装与驱动说明
   安装器不会编译或烧写 Zynq、FPGA、CH32。
 
 首次安装
-  1. 关闭其他访问 SDR 的软件，运行 OmniCoreHost-0.4.1-win64-setup.exe。
+  1. 关闭其他访问 SDR 的软件，运行 OmniCoreHost-0.4.2-win64-setup.exe。
   2. 接受 Windows 正常的管理员 UAC 提示。保留“Install/check libusbK”选项。
   3. 安装完成后打开一个新的终端，运行：
        och find
@@ -16,7 +16,7 @@ OmniCore Host (OCH) 0.4.1 — Windows 安装与驱动说明
        och help
   终端中的输出按标题和分组分层显示，带颜色与实时进度；重定向时自动改为纯文本。
   不需要颜色时使用 --no-color 或设置 NO_COLOR。脚本请使用 --json，结果结构保持兼容。
-  安装时未连接 SDR 也可以完成软件安装。随后连接 USB3 数据口并运行：
+  安装时未连接 SDR 也可以完成软件安装。随后连接 USB 数据口（推荐 USB 3.x）并运行：
        och-driver install
 
 驱动助手
