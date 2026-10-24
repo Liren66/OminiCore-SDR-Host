@@ -7,6 +7,8 @@
 | CLI offline tests | `cli_tests.cpp` | No | Any C++17 compiler |
 | Runtime regression | `runtime_tests.cpp`, `fake_device.*`, `*.inc` | No | Windows (MinGW) |
 | CLI hardware tests | `hardware/cli_hardware_tests.ps1` | Yes | Windows PowerShell 5.1+ |
+| USB2 sample-rate characterization | `hardware/usb2_characterize.py` | Yes | Windows, Python 3 |
+| USB2 result policy regression | `hardware/test_usb2_assessment.py` | No | Python 3 |
 | IQ8 control probe | `hardware/iq8_control_probe.cpp` | Yes | Windows |
 | Runtime reconfiguration | `../tools/hardware_reconfigure.cpp` | Yes | Windows |
 
@@ -22,7 +24,7 @@ ctest --test-dir build/runtime-tests --output-on-failure
 
 On other platforms the same commands build and run only the CLI offline tests.
 
-### CLI offline tests (20 cases)
+### CLI offline tests (23 cases)
 
 Header-only: they include the CLI sources directly and never open a device.
 
@@ -34,7 +36,10 @@ Header-only: they include the CLI sources directly and never open a device.
 | FTR files | one- and two-column files, direction selection, mask/gain/factor/tap-count limits, control characters, profile metadata and `--coefficients-only` |
 | Plain layout | every view (device, power, discovery, config, stream summary, throughput table, SDK reply, FIR, clock chain, events, help, catalog) is 7-bit ASCII and at most 78 columns |
 | Styled layout | the same views with colour and Unicode enabled stay within 78 visible columns and open/reset SGR sequences in pairs; string streams are never styled |
-| Verdicts | stream summary reports `OK` without faults, `WARN` for device events, `FAIL` for host loss or transfer errors |
+| Verdicts | stream summary reports `OK` without faults, `WARN` for device events, padding or throughput below 98%, `FAIL` for host loss or transfer errors |
+| USB2 reference | measured channel/format/firmware matching, no USB3 / unmeasured combination match, above-reference warning, USB2 / USB3 device layout parity and ASCII / styled layout |
+| Startup qualification | recovered RX overflows observed within the first second can pass; late / incomplete recovery and any underflow fail; raw counters retained |
+| Early stop | ignores startup and recovery notifications; two RX overflow onsets within two seconds after startup trigger fail-fast |
 | Views | throughput ratios, two-column status groups and fault highlighting, escaping of non-ASCII device strings, word wrapping without loss, progress line width, event severity/origin, help and catalog completeness |
 
 ### Runtime regression (91 cases)
@@ -60,6 +65,50 @@ not model AD9361 calibration time, FPGA/CH32 FIFO behaviour or RF signal
 quality, so hardware tests remain necessary for timing and recovery.
 
 ## CLI hardware tests
+
+This suite's streaming rates target **USB3**. For a USB2 connection use the
+dedicated characterization script below; do not interpret its USB3 rates as
+USB2 recommendations.
+
+### USB2 characterization
+
+Run one case at a time against an idle USB2-connected board. The script
+requires `info` to report 480 Mbit/s before every case. Available modes are
+`rx1`, `rx2`, `tx1`, `tx2`, `duplex1`, `duplex2` (packed12) and `duplex8`
+(2RX + 2TX, signed8). Single-channel cases use CH1. TX uses the default
+1 MHz complex tone, amplitude 0.25 and attenuation 60 dB.
+
+```powershell
+python tests/hardware/usb2_characterize.py --och build/och.exe --out build/usb2-run `
+  --case rx2:5000000:300 --case duplex2:2000000:300
+```
+
+Each `mode:rate_Hz:seconds` case retains stdout, stderr events, negotiated
+link, configuration, statistics and EXE/DLL SHA256 in its own JSON. Existing
+case files are never overwritten. The default pass rule requires each active
+direction to reach at least 98% of its requested wire rate and run for the
+requested duration. RX overflows with completed resync/recovery observed
+within the first second are accepted and recorded separately; host drops,
+transfer errors, further overflows/resyncs, underflows, event drops, TX
+starvation and TX padding must remain zero. Missing event timestamps cannot
+earn a startup allowance. Check each record's `pass` / `reasons`: the sweep itself exits
+normally even when individual cases fail, so that later rates are still tested.
+The script enables `bench --fail-fast`: after the first second, two RX overflow
+onsets within two seconds stop the case cleanly (exit 3, `stopped_early=true`).
+Startup and recovery notifications do not trigger it. Early stops always fail;
+the record retains requested duration and actual elapsed time separately.
+
+Start with a short sweep, then repeat shortlisted points for 300 seconds or
+longer. A passing short run cannot establish stability. Counter-based
+benchmarking does not check RF waveform fidelity or include file IO / format
+conversion. Measured results and earlier script revisions' criteria are in
+[docs/usb2.md](../docs/usb2.md).
+
+`review_usb2.py RESULTS_DIR --out review.json` reapplies the current policy to
+saved records without altering the originals. In particular, early records
+without event timing cannot be reclassified as startup recovery just because
+the total error count is small. The five offline policy tests run with
+`python tests/hardware/test_usb2_assessment.py`.
 
 `hardware/cli_hardware_tests.ps1` runs `och.exe` as a user would against a
 connected board and checks exit codes, JSON results, files on disk and

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+#include "usb2_reference.hpp"
+#include "stream_assessment.hpp"
 #include <omnicore/och.h>
 #include <algorithm>
 #include <array>
@@ -416,28 +418,44 @@ inline void device(const och_device_info& i, bool detailed, std::ostream& out) {
     group("USB link", out);
     if (i.usb_speed_mbps) {
         const tone t = i.usb_speed_mbps >= 5000 ? tone::good : tone::warn;
-        field("Negotiated speed", detail::fixed(static_cast<double>(i.usb_speed_mbps) / 1000, 1) + " Gbit/s  (" +
+        const auto speed = i.usb_speed_mbps >= 1000
+            ? detail::fixed(static_cast<double>(i.usb_speed_mbps) / 1000, 1) + " Gbit/s"
+            : std::to_string(i.usb_speed_mbps) + " Mbit/s";
+        field("Negotiated speed", speed + "  (" +
               (i.usb_speed_mbps >= 10000 ? "SuperSpeed+" : i.usb_speed_mbps >= 5000 ? "SuperSpeed" :
                i.usb_speed_mbps >= 480 ? "High-Speed, USB 2.0" : "Full-Speed, unsupported") + ")", out, t);
     } else field("Negotiated speed", "Not queried - use och info", out, tone::muted);
     group("RF capabilities", out);
     field("RX / TX channels", std::to_string(i.rx_channels) + " / " + std::to_string(i.tx_channels), out);
-    field("Maximum sample rate", detail::rate(i.max_sample_rate), out);
+    field("RF sample-rate ceiling", detail::rate(i.max_sample_rate), out);
     if (detailed) field("Hardware timestamps", detail::binary(i.hardware_timestamps), out,
                         i.hardware_timestamps ? tone::good : tone::muted);
     if (detailed) {
         end_group(out); out << '\n';
         note("Link speed is the negotiated rate, not measured application throughput.", out);
         note("RX/TX share one sample clock and one USB link; four channels at the maximum rate are not implied.", out);
+
     }
     end_group(out);
+}
+inline void usb2_stream_reference(const och_device_info& i, const och_config& c, std::ostream& out) {
+    if (i.usb_speed_mbps != 480) return;
+    const auto* e = usb2_reference::find(i, c);
+    if (!e) {
+        note("No USB2 reference for this channel/format/firmware combination; validate with bench.", out);
+        return;
+    }
+    field("USB2 tested reference", detail::fixed(e->rate_hz / 1e6, 3) + " MSPS/ch, " + std::to_string(e->seconds) + " s", out);
+    if (c.sample_rate > e->rate_hz)
+        status(level::warn, "Requested rate exceeds this USB2 test reference; reduce --sample-rate if faults occur.", out);
+    note("Reference-host measurement only; this run's counters determine its result.", out);
 }
 inline void devices(const std::vector<och_device_info>& list, std::ostream& out) {
     section("Device discovery", out);
     if (list.empty()) {
         out << '\n';
         status(level::warn, "No OmniCoreSDR device found.", out);
-        note("Check the USB 3 cable and that the device uses the libusbK driver.", out);
+        note("Check the USB data cable and that the device uses the libusbK driver.", out);
         note("Run och-driver check for driver diagnostics.", out);
         return;
     }
@@ -450,7 +468,7 @@ inline void devices(const std::vector<och_device_info>& list, std::ostream& out)
                         std::to_string(i.rx_channels) + "x" + std::to_string(i.tx_channels),
                         detail::fixed(i.max_sample_rate / 1e6, 2) + " MSPS"});
     }
-    table({">#", "Serial", "Name", "Driver", "RXxTX", ">Max rate"}, rows, out);
+    table({">#", "Serial", "Name", "Driver", "RXxTX", ">RF max"}, rows, out);
     out << '\n';
     status(level::ok, std::to_string(list.size()) + (list.size() == 1 ? " device found." : " devices found."), out);
     note("Details and USB link speed: och info" + std::string(list.size() > 1 ? " --serial SERIAL" : ""), out);
@@ -528,11 +546,10 @@ inline void throughput(const std::vector<throughput_row>& rows, std::ostream& ou
 }
 
 inline void stats(och_direction direction, const och_stats& s, unsigned channels_count,
-                  uint32_t configured_rate, std::ostream& out, unsigned wire_bytes = 3) {
+                  uint32_t configured_rate, std::ostream& out, unsigned wire_bytes = 3, uint64_t startup_accepted = 0) {
     const bool tx = direction == OCH_TX;
     const double seconds = static_cast<double>(s.elapsed_ns) / 1e9;
-    const uint64_t faults = s.transfer_errors + s.host_dropped_samples + s.device_overflows +
-        s.device_underflows + s.event_drops + s.tx_starvation_events + s.resyncs;
+    const uint64_t faults = stream_assessment::remaining_faults(s, !tx, startup_accepted);
     const bool hard = s.transfer_errors || s.host_dropped_samples || s.event_drops;
     const double expected = channels_count && configured_rate ?
         static_cast<double>(configured_rate) * channels_count * wire_bytes / 1e6 : 0;
@@ -540,7 +557,11 @@ inline void stats(och_direction direction, const och_stats& s, unsigned channels
 
     section(std::string(detail::direction(direction)) + " stream summary", out);
     out << '\n';
-    if (!faults) status(level::ok, "No faults reported in this observation window.", out);
+    if (!faults && expected > 0 && seconds >= 1 && measured < expected * 0.98)
+        status(level::warn, "Throughput is below 98% of the requested wire rate.", out);
+    else if (!faults && startup_accepted)
+        status(level::ok, "Stable after accepted startup RX recovery; raw counters are retained below.", out);
+    else if (!faults) status(level::ok, "No faults reported in this observation window.", out);
     else if (hard) status(level::fail, "Host-side loss or transfer errors - inspect the counters below.", out);
     else status(level::warn, "Device events reported - inspect the counters and event log.", out);
 
@@ -549,6 +570,10 @@ inline void stats(och_direction direction, const och_stats& s, unsigned channels
     field("Channels", channels_count, out);
     field("Configured rate", detail::rate(configured_rate), out);
     field("Elapsed", detail::fixed(seconds, 3) + " s", out);
+    if (startup_accepted) {
+        field("Startup RX recoveries", startup_accepted, out);
+        field("Remaining fault count", faults, out, faults ? tone::warn : tone::good);
+    }
 
     group("Throughput", out);
     field("USB average", seconds > 0 ? detail::fixed(measured) + " MB/s" : "Unknown (no elapsed time)", out, tone::accent);

@@ -4,8 +4,8 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 桥）的主机端�
 
 | 项目 | 说明 |
 |---|---|
-| 当前版本 | **0.4.2**，C ABI 1 |
-| 平台 | Windows 10 / 11 x64，USB 3.x，libusbK 3.1.0.0 |
+| 当前版本 | **0.4.3**，C ABI 1 |
+| 平台 | Windows 10 / 11 x64，USB 3.x / USB 2.0 High-Speed，libusbK 3.1.0.0 |
 | 语言 | C++17 运行库，纯 C ABI + 仅头文件 C++ RAII 包装 |
 | 许可证 | MIT（第三方组件沿用各自许可证） |
 
@@ -19,10 +19,11 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 桥）的主机端�
 - [命令行使用](#命令行使用)
 - [C/C++ 开发接口](#cc-开发接口)
 - [数据完整性与能力边界](#数据完整性与能力边界)
+- [USB 2.0 稳定传输实测](#usb-20-稳定传输实测)
 - [从源码构建](#从源码构建)
 - [测试](#测试)
 - [生成安装包](#生成安装包)
-- [验证状态](#验证状态)
+- [测试结果](#测试结果)
 - [工程目录](#工程目录)
 - [文档索引](#文档索引)
 
@@ -41,6 +42,7 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 桥）的主机端�
 | 8bit USB IQ | 2TX2RX 可选 signed8 传输，降低 USB 带宽占用；默认仍为 12bit | 0.4.0 |
 | 分层终端输出 | 彩色分组视图、实时进度条、吞吐汇总表；重定向时自动输出纯 ASCII | 0.4.1 |
 | USB 2.0 High-Speed | 支持 480 Mbit/s 连接（需更新 CH32 固件），适合低采样率；仍不支持 Full-Speed | 0.4.2 |
+| USB2 实测参考 | 按通道 / 精度记录实测采样率与时长；超出参考值时提示，保留启动恢复与故障统计 | 0.4.3 |
 
 ## 架构
 
@@ -85,7 +87,7 @@ OmniCore Host 是 OmniCoreSDR（AD9361 + Zynq + CH32H417 USB 桥）的主机端�
 
 ## 安装
 
-运行 `dist/OmniCoreHost-0.4.2-win64-setup.exe`，默认安装到 `C:\Program Files\OmniCore Host`，并将 `bin` 加入 PATH。安装包包含：
+运行 `dist/OmniCoreHost-0.4.3-win64-setup.exe`，默认安装到 `C:\Program Files\OmniCore Host`，并将 `bin` 加入 PATH。安装包包含：
 
 - `och.exe`、`omnicore.dll`、`libusbK.dll`
 - C/C++ 头文件、MinGW 与 MSVC 导入库、CMake 包配置
@@ -116,7 +118,7 @@ och help                    # 命令与参数说明
 
 <p align="center"><img src="docs/images/cli-info.png" width="640" alt="och info 的终端输出"></p>
 
-做一次 10 秒全双工吞吐测试：
+USB3 连接下，做一次 10 秒全双工吞吐测试：
 
 ```powershell
 och bench --rx --tx --sample-rate 30.72M --channels 1,2 --seconds 10
@@ -135,7 +137,7 @@ och bench --rx --tx --sample-rate 30.72M --channels 1,2 --seconds 10
   TX    2    30.72   12.14     182.9      184.3  99.2 %       1
 ```
 
-`Ratio` 是实测 USB 吞吐与理论 wire 速率之比，平均值包含流启动和停止时间。`Faults` 汇总该方向的溢出、欠流、重同步和传输错误；双向启动时 FPGA 报告一次 RX 溢出并随即重同步属于已知的启动行为，具体条目在各方向的 `Faults` 分组中列出。
+`Ratio` 是实测 USB 吞吐与理论 wire 速率之比，平均值包含流启动和停止时间。`Faults` 保留溢出、欠流、重同步、主机损失、传输错误与 TX 补零的原始计数；设备计数在 RX/TX 间共享，不应相加作为设备事件总数。稳定性判定允许**前 1 秒内观察到并完成恢复的 RX 溢出及对应重同步**，以 `Startup RX recoveries` 单列，1 秒之后必须没有新增错误；仅看上述总计表无法判断事件发生时间。USB2 请按下方[稳定传输实测](#usb-20-稳定传输实测)选取采样率，不能直接使用 USB3 的示例速率。
 
 ## 命令行使用
 
@@ -179,7 +181,7 @@ och bench --rx --tx --sample-rate 30.72M --channels 1,2 --seconds 10
 <p align="center"><img src="docs/images/cli-find-error.png" width="640" alt="och find 与参数错误提示"></p>
 </details>
 
-文本布局可能随版本改进；脚本和自动化应使用 `--json` 或 C/C++ API。退出码：`0` 成功，`1` 设备 / 传输 / 运行错误，`2` 参数错误，`130` 被 Ctrl+C 中断并已清理。
+文本布局可能随版本改进；脚本和自动化应使用 `--json` 或 C/C++ API。退出码：`0` 命令完成，`1` 设备 / 传输 / 运行错误，`2` 参数错误，`3` 为 `bench --fail-fast` 因连续溢出提前结束，`130` 被 Ctrl+C 中断并已清理。
 
 ### IQ 采集与播放
 
@@ -226,7 +228,7 @@ och bench --rx --tx --sample-rate 61.44M --channels 1 --seconds 30       # 1RX +
 och bench --rx --tx --iq-bits 8 --sample-rate 61.44M --channels 1,2 --seconds 30   # 8bit 2RX + 2TX 满速率
 ```
 
-理论 wire 速率 = 采样率 × 通道数 × 每样本字节（12bit 为 3，8bit 为 2），MB/s 为十进制；实测结果见 [验证状态](#验证状态)。默认每方向 64 MiB 主机环形缓冲、32 个并行 USB 请求、每请求 196608 字节，可用 `--buffer-mib`、`--queue`、`--block` 调整；增大缓冲只能吸收短时调度停顿，不能弥补长期处理能力不足。
+以上为 USB3 示例。理论 wire 速率 = 采样率 × 通道数 × 每样本字节（12bit 为 3，8bit 为 2），MB/s 为十进制；USB2 的 RX 与 TX 共用链路预算，需计算双向合计值。实测结果见 [USB2 实测](#usb-20-稳定传输实测)与 [USB3 验证状态](#验证状态)。默认每方向 64 MiB 主机环形缓冲、32 个并行 USB 请求、每请求 196608 字节，可用 `--buffer-mib`、`--queue`、`--block` 调整；增大缓冲只能吸收短时调度停顿，不能弥补长期处理能力不足。
 
 ### 射频控制
 
@@ -345,6 +347,50 @@ rx.start();
 
 更多排错信息见 [排错与能力边界](docs/troubleshooting.md)。
 
+## USB 2.0 稳定传输实测
+
+| 测试条件 | |
+|---|---|
+| 主机 | Lenovo ThinkPad E14 Gen 7，Intel Core Ultra 7 255H，32 GB RAM |
+| 系统 | Windows 11，build 26200 |
+| USB | High-Speed，480 Mbit/s，libusbK 3.1.0.0 |
+| 板卡 | OmniCoreSDR，固件 `SDK_CMD_1.0_20261024_IQ8` |
+| 参数 | 0.5 MSPS 步进，每项 300 秒；TX 为 1 MHz 正弦、幅度 0.25、衰减 60 dB |
+
+七种配置均通过连续 300 秒测试。允许前 1 秒内完成的 RX 启动恢复，之后零新增错误；各方向平均 USB 吞吐达到理论 wire 速率的 98% 以上。
+
+![USB2 吞吐实测](docs/images/usb2-throughput.svg)
+
+| 配置 | USB IQ | 稳定采样率 MSPS/通道 | RX / TX MB/s | 启动恢复 | 1 秒后新增错误 |
+|---|---:|---:|---:|---:|---:|
+| 1 RX | 12bit | **14** | 41.998 / — | 2 | 0 |
+| 2 RX | 12bit | **7** | 41.998 / — | 0 | 0 |
+| 1 TX | 12bit | **14** | — / 41.987 | 0 | 0 |
+| 2 TX | 12bit | **6.5** | — / 38.988 | 0 | 0 |
+| 1 RX + 1 TX | 12bit | **7** | 20.999 / 20.993 | 1 | 0 |
+| 2 RX + 2 TX | 12bit | **3.5** | 20.999 / 20.993 | 0 | 0 |
+| 2 RX + 2 TX | 8bit | **5** | 19.999 / 19.994 | 1 | 0 |
+
+采样率均为**每通道**；单通道使用 CH1，双通道使用 CH1 + CH2。表中为本机测试结果，`bench` 使用原生 packed12 / signed8，不包含磁盘写入和应用格式转换。`61.44 MSPS` 是 RF 采样率上限，USB2 持续传输采样率参考上表。
+
+```powershell
+# 12bit 双通道全双工
+och bench --rx --tx --channels 1,2 --sample-rate 3.5M --seconds 300 --attenuation 60 --fail-fast
+
+# 8bit 双通道全双工
+och bench --rx --tx --channels 1,2 --iq-bits 8 --sample-rate 5M --seconds 300 --attenuation 60 --fail-fast
+```
+
+<details>
+<summary>USB2 设备信息与吞吐测试输出</summary>
+<br>
+<img src="docs/images/cli-usb2-info.png" alt="USB2 och info：与 USB3 相同的设备信息布局，链路为 480 Mbit/s">
+<br>
+<img src="docs/images/cli-usb2-bench.png" alt="8bit 双通道全双工 5 MSPS 的 300 秒测试：启动恢复 1 次，后续零错误">
+</details>
+
+`--fail-fast` 在启动窗口之后遇到连续 RX 溢出时提前停流并保留统计。测试条件、判定方式及各项通过记录见 [USB2 测试结果](docs/usb2.md)。
+
 ## 从源码构建
 
 需要 CMake 3.20+、Ninja 和支持 C++17 的 x64 工具链。Windows 版本使用 MSYS2 MinGW-w64（默认路径 `C:\msys64\mingw64\bin`）：
@@ -363,6 +409,7 @@ powershell -File tools/build.ps1 -Configuration Release
 | CLI 离线测试 | `tests/cli_tests.cpp` | 参数与数值解析、FTR 文件校验、终端输出布局（ASCII / 78 列 / 颜色序列配对）、统计判定 | 否 |
 | 运行时回归 | `tests/runtime_tests.cpp` | 生产 C API、配置事务、流线程和编解码，对接进程内模拟 USB 传输 | 否 |
 | CLI 实板测试 | `tests/hardware/cli_hardware_tests.ps1` | 端到端运行 `och.exe`：基础查询、控制回读、参数校验、文件采集与播放、吞吐测试、输出格式 | 是 |
+| USB2 采样率实测 | `tests/hardware/usb2_characterize.py` | 串行扫描配置，检查吞吐和全部故障计数，保存原始 JSON、事件与二进制哈希 | 是 |
 | 运行中改参实测 | `tools/run-hardware-reconfigure.ps1` | 持续流中反复改参的恢复行为 | 是 |
 
 ```powershell
@@ -371,7 +418,7 @@ cmake -S tests -B build/runtime-tests -G Ninja
 cmake --build build/runtime-tests
 ctest --test-dir build/runtime-tests --output-on-failure
 
-# 实板测试（TX 用例默认 60 dB 衰减；请接负载或天线）
+# USB3 实板测试（TX 用例默认 60 dB 衰减；请接负载或天线）
 powershell -ExecutionPolicy Bypass -File tests/hardware/cli_hardware_tests.ps1
 powershell -File tests/hardware/cli_hardware_tests.ps1 -Group capture,bench -BenchSeconds 30
 ```
@@ -395,7 +442,14 @@ powershell -NoProfile -File packaging/build-package.ps1 -StageDir build/stage
 
 输出 `dist/OmniCoreHost-<版本>-win64-setup.exe` 及 `.sha256`。打包脚本会校验 stage 目录内容与版本号，加入驱动助手、libusbK、许可证与源码包，生成 MSVC 导入库，检查未打包的编译器运行库依赖，并为全部负载写入 `PAYLOAD_SHA256.txt`。需要 Visual Studio C++ Build Tools 中的 `lib.exe`；Inno Setup 6.2.2 已随工程提供。详见 [安装包构建说明](packaging/BUILD_INSTALLER.txt)。
 
-## 验证状态
+## 测试结果
+
+**0.4.3**（2026-10-25）
+
+- 7 种通道 / 精度配置均完成 **300 秒**验收，按 **0.5 MSPS** 步进确定本机参考值；见上方[实测表](#usb-20-稳定传输实测)与[完整报告](docs/usb2.md)。
+- 允许前 1 秒内完成的 RX 启动恢复，之后零新增错误；启动计数完整保留。
+- 离线回归：**23 / 23 CLI、91 / 91 运行时、5 / 5 USB2 判定测试通过**。
+- 最终程序已复核 USB2 `info` 文本 / JSON、7 项参考值、参数检查及 30 秒全双工输出；重定向布局保持纯 ASCII、最多 78 列。
 
 **0.4.2**（2026-10-25）
 
@@ -431,15 +485,13 @@ powershell -NoProfile -File packaging/build-package.ps1 -StageDir build/stage
 | 300 秒 | 245.7 | 245.7 | 184.4 亿 | 0 / 0 / 0 | 0 / 0 |
 | 60 秒（0.4.2 正式构建） | 245.7 | 245.4 | 37.0 亿 | 0 / 0 / 0 | 0 / 0 |
 
-前三轮使用版本号更新为 0.4.2 之前、源码相同的构建，最后一轮为 0.4.2 正式构建；每轮都只有启动时的一次 RX 同步事件，没有设备溢出、欠流或重同步。0.4.0 在同一配置下的两轮 300 秒测试曾分别在约 263.5 秒和 88.8 秒出现一次 RX 溢出与 TX 欠流；本次为单轮结果，长期稳定性仍需更多轮次和不同主机确认。详见 [8bit 扩展验证](docs/iq8.md#042-复测6144-msps2026-10-25)。
 
 **0.4.0 长时间测试**
 
 - 8bit 2RX + 2TX 在 **50 MSPS 下连续 300 秒无新增错误**，RX/TX 各约 200 MB/s。
-- 8bit 61.44 MSPS 的两轮 300 秒测试分别在稳态约 263.5 秒和 88.8 秒出现一次 RX 溢出与 TX 欠流（复测见上）。
 - 12bit 2RX + 2TX 44.25 MSPS 连续 60 秒无错；9 项通道 / 格式矩阵通过。详见 [8bit 扩展验证](docs/iq8.md#实板验证2026-10-24)。
 
-**历史版本**
+**功能测试**
 
 | 项目 | 结果 | 记录 |
 |---|---|---|
@@ -488,6 +540,7 @@ OmniCoreHost/
 | [参考时钟与外部 LO](docs/reference-lo.md) | ADF4002、外部 10 MHz 与外部 LO |
 | [PPS 监控](docs/pps.md) | PPS 频率监控原理与验证 |
 | [板级控制](docs/board-control.md) | RGB、风扇温控与核心温度 |
+| [USB2 稳定传输](docs/usb2.md) | 0.5 MSPS 步进、300 秒长测、启动恢复与通过记录 |
 | [8bit USB IQ](docs/iq8.md) | signed8 传输格式、API 与验证 |
 | [固件兼容性](docs/firmware-compatibility.md) | 固件与协议依赖 |
 | [排错](docs/troubleshooting.md) | 常见问题与能力边界 |

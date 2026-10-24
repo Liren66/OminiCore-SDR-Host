@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 #define OCH_ABI_VERSION 1u
-#define OCH_VERSION "0.4.2"
+#define OCH_VERSION "0.4.3"
 #define OCH_PPS_LOCK_TOLERANCE_PPM 1
 typedef struct och_device och_device;
 typedef struct och_stream och_stream;
@@ -37,7 +37,7 @@ typedef struct och_device_info {
     char serial[128], name[128], driver[32], firmware[128];
     uint32_t usb_speed_mbps; /* 5000 SuperSpeed, 480 USB 2.0 High-Speed; 0 = not queried (och_find) */
     uint32_t rx_channels, tx_channels, hardware_timestamps;
-    uint32_t max_sample_rate;
+    uint32_t max_sample_rate; /* RF capability, not a guaranteed USB streaming rate. */
 } och_device_info;
 /* Shared sample clock. Channel masks: 0=disabled, 1=channel1, 2=channel2, 3=both.
  * All frequencies here are Hz, gain/attenuation are dB. No implicit TX start. */

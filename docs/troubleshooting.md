@@ -2,7 +2,7 @@
 
 ## 找不到设备
 
-先运行 och-driver check、och find --json，检查目标数据设备 1A86:5537 是否使用 libusbK、是否成功枚举。find 不打开设备查询链路速度，默认文本的 unknown、JSON 的 usb_speed_mbps=0 都表示未查询；继续运行 och info 检查实际 USB 3.x 链路和独占打开结果。不要把 WCH-Link 改成 libusbK。多个匹配设备必须用 --serial。
+先运行 och-driver check、och find --json，检查目标数据设备 1A86:5537 是否使用 libusbK、是否成功枚举。find 不打开设备查询链路速度，默认文本的 unknown、JSON 的 usb_speed_mbps=0 都表示未查询；继续运行 och info 检查实际 USB3 / USB2 High-Speed 链路和独占打开结果。不要把 WCH-Link 改成 libusbK。多个匹配设备必须用 --serial。
 
 设备管理器代码 43、端口重置失败属于 USB 枚举问题，不能当作正常打开后的流故障处理。保存诊断信息后检查供电/线缆/端口。驱动被安全策略拒绝时按安装说明处理，不自动关闭签名检查或内存完整性。
 
@@ -13,6 +13,8 @@ och power status 使用现有 CH32 EP83 启动日志，只有完整、无冲突�
 启动日志不提供可靠启动编号、实时连接状态或 LED GPIO 读回。主机仅报告已有信息，不会为取得结果而修改/下载 CH32、SDK 或 FPGA，也不假装测量当前供电电流。若同一日志显示 3 A，只说明该启动快照中的检测结果，不能据此证明线缆/电源在当前负载下表现。
 
 ## 吞吐低、RX 间断或 TX 欠流
+
+USB2 先查看 README 的稳定采样率表和 [USB2 测试结果](usb2.md)，按收发通道数与 IQ 精度选择速率。`RF sample-rate ceiling` 的 61.44 MSPS 不是 USB2 可持续速率。短测通过仍可能在几分钟后欠流，应对选定档位重复长测；默认的 30.72 MSPS 示例面向 USB3。
 
 先运行不写盘的 packed12 benchmark，再测试文件和格式转换。双 RX 满速 wire 为 368.64 MB/s，保存 fc32 约 983.04 MB/s；磁盘短时缓存快不代表持续写入达标。
 

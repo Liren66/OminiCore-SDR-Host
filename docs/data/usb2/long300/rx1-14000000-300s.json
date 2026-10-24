@@ -1,0 +1,88 @@
+{
+  "time": "2026-10-24T18:13:38.161244+00:00",
+  "executable": "C:\\Users\\ABC20\\Desktop\\AD9361_TEST\\OmniCoreHost\\build\\och.exe",
+  "exe_sha256": "24cd6511cabc354541c5abe853310a3742e22c91fa315ead899b12af40fb8523",
+  "dll_sha256": "3615e10b2e6edcc7eb072e35723ac1b4f3e540db1b1ecf46a356283a06af46b0",
+  "mode": "rx1",
+  "rate": 14000000,
+  "seconds": 300,
+  "info": {
+    "args": [
+      "info",
+      "--json"
+    ],
+    "exit_code": 0,
+    "wall_seconds": 0.7810000000026776,
+    "stdout": "{\"serial\":\"OMINICORE00000001\",\"name\":\"OmniCoreSDR\",\"driver\":\"libusbK\",\"firmware\":\"SDK_CMD_1.0_20261024_IQ8\",\"usb_speed_mbps\":480,\"rx_channels\":2,\"tx_channels\":2,\"max_sample_rate\":61440000,\"sample_rate_scope\":\"rf_capability\",\"hardware_timestamps\":false,\"usb2_reference\":{\"scope\":\"single_host_observation\",\"date\":\"2026-10-25\",\"profiles\":[]},\"power\":{\"source\":\"startup_log\",\"live\":false,\"log_endpoint_present\":true,\"snapshot_valid\":false,\"conflicting_snapshots\":false,\"attached_state\":null,\"current_detected\":null,\"source_current_ma\":null,\"supports_3a\":null,\"raw_08\":null,\"raw_09\":null,\"raw_0a\":null}}\r\n",
+    "stderr": ""
+  },
+  "run": {
+    "args": [
+      "bench",
+      "--rx",
+      "--channels",
+      "1",
+      "--sample-rate",
+      "14000000",
+      "--seconds",
+      "300",
+      "--attenuation",
+      "60",
+      "--json"
+    ],
+    "exit_code": 0,
+    "wall_seconds": 300.9530000000086,
+    "stdout": "{\"command\":\"bench\",\"config\":{\"sample_rate\":14000000,\"rx_mask\":1,\"tx_mask\":0,\"rx_frequency\":1000000000,\"tx_frequency\":1000000000,\"rx_bandwidth\":18000000,\"tx_bandwidth\":18000000,\"rx_gain\":[30,30],\"tx_attenuation\":[60,60],\"rx_agc\":2,\"usb_iq_bits\":12},\"format\":\"packed12\",\"events\":7,\"interrupted\":false,\"rx\":{\"usb_bytes\":12601524224,\"samples_per_channel\":4200442538,\"elapsed_seconds\":300.0494465,\"usb_MBps\":41.99815854,\"channels\":1,\"host_dropped_samples\":0,\"headers\":3,\"resyncs\":2,\"host_queue_peak_bytes\":278526,\"transfer_errors\":0,\"device_overflows\":2,\"device_underflows\":0,\"event_drops\":0,\"tx_starvation_events\":0,\"tx_padding_samples\":0}}\r\n",
+    "stderr": "{\"type\":\"event\",\"sequence\":1,\"event_type\":2,\"epoch\":1,\"host_monotonic_ns\":100407486717000,\"observed_seconds\":9.05e-05,\"message\":\"RX preamble complete; new epoch=1\"}\r\n{\"type\":\"event\",\"sequence\":2,\"event_type\":1,\"epoch\":0,\"host_monotonic_ns\":100407503358200,\"observed_seconds\":0.0113493,\"message\":\"EVT seq=308 stream=33 type=rx_overflow mask=1 src=fpga count=22760 lost=-1 action=waiting_rx_resync status=0x21051301 header_bytes=0\"}\r\n{\"type\":\"event\",\"sequence\":3,\"event_type\":2,\"epoch\":2,\"host_monotonic_ns\":100407504186400,\"observed_seconds\":0.0122082,\"message\":\"RX preamble complete; new epoch=2\"}\r\n{\"type\":\"event\",\"sequence\":4,\"event_type\":1,\"epoch\":0,\"host_monotonic_ns\":100407515118400,\"observed_seconds\":0.0553582,\"message\":\"EVT seq=309 stream=33 type=rx_overflow mask=1 src=fpga count=22760 lost=-1 action=rx_restarted status=0x21051301 header_bytes=16384\"}\r\n{\"type\":\"event\",\"sequence\":5,\"event_type\":1,\"epoch\":0,\"host_monotonic_ns\":100407526756700,\"observed_seconds\":0.0554321,\"message\":\"EVT seq=310 stream=33 type=rx_overflow mask=1 src=fpga count=22761 lost=-1 action=waiting_rx_resync status=0x21051301 header_bytes=0\"}\r\n{\"type\":\"event\",\"sequence\":6,\"event_type\":2,\"epoch\":3,\"host_monotonic_ns\":100408004259500,\"observed_seconds\":0.538849,\"message\":\"RX preamble complete; new epoch=3\"}\r\n{\"type\":\"event\",\"sequence\":7,\"event_type\":1,\"epoch\":0,\"host_monotonic_ns\":100408015060500,\"observed_seconds\":0.538878,\"message\":\"EVT seq=311 stream=33 type=rx_overflow mask=1 src=fpga count=22761 lost=-1 action=rx_restarted status=0x21051200 header_bytes=16384\"}\r\n"
+  },
+  "result": {
+    "command": "bench",
+    "config": {
+      "sample_rate": 14000000,
+      "rx_mask": 1,
+      "tx_mask": 0,
+      "rx_frequency": 1000000000,
+      "tx_frequency": 1000000000,
+      "rx_bandwidth": 18000000,
+      "tx_bandwidth": 18000000,
+      "rx_gain": [
+        30,
+        30
+      ],
+      "tx_attenuation": [
+        60,
+        60
+      ],
+      "rx_agc": 2,
+      "usb_iq_bits": 12
+    },
+    "format": "packed12",
+    "events": 7,
+    "interrupted": false,
+    "rx": {
+      "usb_bytes": 12601524224,
+      "samples_per_channel": 4200442538,
+      "elapsed_seconds": 300.0494465,
+      "usb_MBps": 41.99815854,
+      "channels": 1,
+      "host_dropped_samples": 0,
+      "headers": 3,
+      "resyncs": 2,
+      "host_queue_peak_bytes": 278526,
+      "transfer_errors": 0,
+      "device_overflows": 2,
+      "device_underflows": 0,
+      "event_drops": 0,
+      "tx_starvation_events": 0,
+      "tx_padding_samples": 0
+    }
+  },
+  "ratios": {
+    "rx": 0.9999561557142856
+  },
+  "pass": false,
+  "reasons": [
+    "rx device_overflows=2",
+    "rx resyncs=2"
+  ]
+}

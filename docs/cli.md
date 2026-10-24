@@ -54,6 +54,28 @@
 
 默认文本布局可能随版本改进，自动化程序应使用 `--json` 或公开 C/C++ API。`--json` 的结果字段和结构与旧版本兼容。读取 JSON 时仍需分别处理标准输出、标准错误和进程退出码；有事件不必然表示命令失败。
 
+### USB2 采样率与判定（0.4.3）
+
+`info` 在 USB2 与 USB3 下使用相同的设备信息分组：身份、USB 链路、RF 能力和电源信息。USB2 显示 `480 Mbit/s`，`RF sample-rate ceiling` 仍表示射频能力。实测采样率、测试主机与时长放在 [USB2 报告](usb2.md) 和 README 中；`info --json` 保留 `usb2_reference` 供脚本读取。
+
+流开始时新增 `USB link`、`RX + TX wire demand` 和匹配配置的参考值。超过参考采样率会提示 `WARN`，但不自动改参或限制 SDK 的射频范围。单通道参考只测过 CH1；CH2-only、非对称全双工及其他固件组合显示未测。已测点也不能保证另一台主机的结果。
+
+稳定性判定允许**前 1 秒内观察到并完成恢复的 RX 溢出及对应重同步**，不限制这个窗口内的恢复次数。必须同时有溢出通知、恢复完成通知和新 epoch 起始头，才计入 `Startup RX recoveries`。所有原始统计不清零；1 秒后的溢出 / 重同步，以及任何阶段的欠流、主机丢样、传输错误、事件丢失、TX 断供或补零仍导致警告 / 失败。这个“启动后稳定”结论不表示启动数据无损。
+
+观察时间至少 1 秒、无剩余错误计数但吞吐低于理论值 98% 时也显示 `WARN`；平均值包含启停开销，短测试尤其需要结合时长解释。退出码仍表示命令是否完成，不能替代这些验收条件。启动窗口从流启动调用返回后计时，事件时间是 CLI 取出事件的主机观察时间。
+
+`bench --fail-fast` 用于扫描失败档位：第 1 秒之后，两次 RX 溢出通知相隔不超过 2 秒即提前正常停流、保存统计并返回退出码 `3`。恢复通知不重复计数，启动窗口内的溢出不触发提前停止。stdout JSON 的 `stopped_early=true`、`stability.pass=false` 标明未完成请求时长；无连续溢出的候选仍运行完整时长。USB2 扫描脚本默认启用此选项。
+
+JSON 保持旧字段，新增内容如下：
+
+| 位置 | 新字段 | 含义 |
+|---|---|---|
+| `info` stdout | `sample_rate_scope: "rf_capability"` | 原 `max_sample_rate` 的语义，未改值 |
+| `info` stdout，USB2 且固件匹配 | `usb2_reference` | `scope: "single_host_observation"`、测试日期、`profiles` 数组；各行包含 `mode`、`iq_bits`、`rx_mask`、`tx_mask`、`sample_rate_hz`、`test_seconds` |
+| 流 stderr，超过已测参考 | `type: "warning"`、`code: "usb2_reference_exceeded"` | 同时提供 `reference_rate_hz`、`test_seconds`、`scope` |
+| 流 stderr 事件 | `host_monotonic_ns`、`observed_seconds` | 主机事件时间戳与 CLI 取出事件时距运行开始的秒数；后者是观察时间，不是硬件事件发生时间 |
+| 流 stdout | `stability` | `startup_window_seconds`、`policy`、`accepted_startup_overflows`、各方向剩余故障计数，以及本次观察的 `pass`；原 `rx` / `tx` 统计完整保留 |
+
 ## 发现与控制
 
 | 命令 | 含义 |
@@ -186,9 +208,10 @@ och bench --rx --tx --sample-rate 61.44M --rx-channels 1 --tx-channels 2 --secon
 | 0 | 命令完成 |
 | 1 | 设备、传输或运行错误 |
 | 2 | 参数错误（未访问设备） |
+| 3 | `bench --fail-fast` 因连续 RX 溢出提前结束，已清理并保留统计 |
 | 130 | 被 Ctrl+C 中断，已清理 |
 
-EVT/间断不自动使流停止。业务是否通过应根据间断、欠流、重同步和队列损失统计判断，不能只看退出码。
+默认情况下 EVT/间断不自动使流停止；`bench --fail-fast` 例外如上。业务是否通过应根据间断、欠流、重同步和队列损失统计判断，不能只看退出码。
 
 ## RGB 与风扇温控
 

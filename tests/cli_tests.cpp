@@ -8,6 +8,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -103,6 +104,7 @@ const char* status_dump =
 std::vector<std::function<void(std::ostream&)>> all_views() {
     return {
         [](std::ostream& o) { p::device(sample_device(), true, o); },
+        [](std::ostream& o) { auto d=sample_device(); d.usb_speed_mbps=480; p::device(d, true, o); },
         [](std::ostream& o) { p::device(sample_device(), false, o); },
         [](std::ostream& o) { och_power_status s{}; s.log_endpoint_present = 1; p::power(s, o); },
         [](std::ostream& o) { och_power_status s{}; s.snapshot_valid = 1; s.attached_state = 2; s.supports_3a = 1; s.source_current_ma = 3000; p::power(s, o); },
@@ -233,6 +235,12 @@ void stats_verdicts() {
     CHECK(has(text, "[FAIL]") && has(text, "USB transfer errors       2"));
     auto tx = plain([&](std::ostream& o) { p::stats(OCH_TX, sample_stats(), 2, 30720000, o); });
     CHECK(has(tx, "Accepted samples/ch") && has(tx, "TX padding samples/ch") && has(tx, "USB completion does not confirm"));
+    auto stalled = sample_stats(); stalled.usb_bytes /= 2;
+    const auto low = plain([&](std::ostream& o) { p::stats(OCH_RX, stalled, 2, 30720000, o); });
+    CHECK(has(low, "[WARN]") && has(low, "below 98%") && !has(low, "[ OK ]"));
+    CHECK_LAYOUT(low, false);
+    auto padded = sample_stats(); padded.tx_padding_samples = 16;
+    CHECK(has(plain([&](std::ostream& o) { p::stats(OCH_TX, padded, 2, 30720000, o); }), "[WARN]"));
 }
 void throughput_table() {
     const auto text = plain([](std::ostream& o) {
@@ -269,7 +277,10 @@ void device_views() {
     const auto info = plain([](std::ostream& o) { p::device(sample_device(), true, o); });
     CHECK(has(info, "OmniCore Host " OCH_VERSION) && has(info, "5.0 Gbit/s  (SuperSpeed)") && has(info, "SDK_CMD_1.0"));
     auto slow = sample_device(); slow.usb_speed_mbps = 480;
-    CHECK(has(plain([&](std::ostream& o) { p::device(slow, true, o); }), "0.5 Gbit/s  (High-Speed, USB 2.0)"));
+    const auto hs = plain([&](std::ostream& o) { p::device(slow, true, o); });
+    CHECK(has(hs, "480 Mbit/s  (High-Speed, USB 2.0)"));
+    CHECK(has(hs, "RF sample-rate ceiling") && !has(hs, "Maximum sample rate"));
+    CHECK_LAYOUT(hs, false);
     auto weird = sample_device(); std::strcpy(weird.name, "Bad\x1b[31mName\xC3\xA9");
     const auto escaped = plain([&](std::ostream& o) { p::device(weird, false, o); });
     CHECK(has(escaped, "Bad\\x1B[31mName\\xC3\\xA9"));
@@ -284,6 +295,73 @@ void value_helpers() {
     CHECK(mask(3) == "CH1 + CH2  (mask 3)" && mask(9) == "Unknown channel mask  (mask 9)");
     CHECK(columns("\x1b[1mab\x1b[0m\xE2\x94\x81") == 3);
 }
+void usb2_references() {
+    auto d = sample_device(); d.usb_speed_mbps = 480;
+    std::strcpy(d.firmware, usb2_reference::firmware);
+    const auto info = plain([&](std::ostream& o) { p::device(d, true, o); });
+    CHECK(!has(info, "USB2 streaming reference") && !has(info, "Reference host"));
+    auto ss = d; ss.usb_speed_mbps = 5000;
+    auto ss_info = plain([&](std::ostream& o) { p::device(ss, true, o); });
+    auto hs_info = info;
+    const auto hs_speed = hs_info.find("480 Mbit/s  (High-Speed, USB 2.0)");
+    CHECK(hs_speed != std::string::npos);
+    hs_info.replace(hs_speed, std::strlen("480 Mbit/s  (High-Speed, USB 2.0)"), "5.0 Gbit/s  (SuperSpeed)");
+    CHECK(hs_info == ss_info);
+    CHECK_LAYOUT(info, false);
+    CHECK_LAYOUT(styled([&](std::ostream& o) { p::device(d, true, o); }), true);
+    for (const auto& e : usb2_reference::entries) {
+        CHECK(e.rate_hz > 0 && e.seconds >= 300);
+        och_config c{}; c.sample_rate = e.rate_hz; c.usb_iq_bits = e.bits;
+        c.rx_mask = e.rx_channels == 2 ? 3 : e.rx_channels;
+        c.tx_mask = e.tx_channels == 2 ? 3 : e.tx_channels;
+        CHECK(usb2_reference::find(d, c) == &e);
+        CHECK(!has(plain([&](std::ostream& o) { p::usb2_stream_reference(d, c, o); }), "[WARN]"));
+        ++c.sample_rate;
+        const auto warning = plain([&](std::ostream& o) { p::usb2_stream_reference(d, c, o); });
+        CHECK(has(warning, "[WARN]") && has(warning, "exceeds"));
+        CHECK_LAYOUT(warning, false);
+    }
+    och_config c{}; c.rx_mask = 1; c.usb_iq_bits = 12;
+    const auto* ch1 = usb2_reference::find(d, c); c.rx_mask = 2;
+    CHECK(ch1 && !usb2_reference::find(d, c));
+    c.rx_mask = 1; c.tx_mask = 3; CHECK(!usb2_reference::find(d, c)); // Unmeasured asymmetric duplex.
+    c.tx_mask = 0; d.usb_speed_mbps = 5000;
+    CHECK(!usb2_reference::find(d, c));
+    d.usb_speed_mbps = 480; std::strcpy(d.firmware, "unmeasured");
+    CHECK(!usb2_reference::find(d, c));
+}
+void startup_stability() {
+    using namespace stream_assessment;
+    auto observe = [](startup_observer& o, unsigned type, const char* message, uint64_t epoch, double seconds) {
+        och_event e{}; e.type = type; e.epoch = epoch; std::strcpy(e.message, message); o.observe(e, seconds);
+    };
+    auto recover = [&](startup_observer& o, double seconds) {
+        observe(o, OCH_EVENT_DEVICE, "EVT type=rx_overflow action=waiting_rx_resync status=0", 0, seconds);
+        observe(o, OCH_EVENT_RX_SYNC, "RX preamble complete", 2, seconds + 0.01);
+        observe(o, OCH_EVENT_DEVICE, "EVT type=rx_overflow action=rx_restarted status=0", 0, seconds + 0.02);
+    };
+    auto rx = sample_stats(); rx.device_overflows = rx.resyncs = 1;
+    startup_observer start; recover(start, 0.05);
+    CHECK(start.accepted(rx) == 1 && remaining_faults(rx, true, start.accepted(rx)) == 0);
+    const auto accepted = plain([&](std::ostream& o) { p::stats(OCH_RX, rx, 2, 30720000, o, 3, start.accepted(rx)); });
+    CHECK(has(accepted, "[ OK ]") && has(accepted, "Stable after accepted") && has(accepted, "Device RX overflows       1"));
+    CHECK_LAYOUT(accepted, false);
+    CHECK(rx.device_overflows == 1 && rx.resyncs == 1); // Original counters are never rewritten.
+    auto tx = sample_stats(); tx.device_overflows = 1;
+    CHECK(remaining_faults(tx, false, 1) == 0);
+    ++tx.device_underflows; CHECK(remaining_faults(tx, false, 1) == 1);
+    startup_observer late; recover(late, 1.01); CHECK(late.accepted(rx) == 0);
+    startup_observer incomplete;
+    observe(incomplete, OCH_EVENT_DEVICE, "EVT type=rx_overflow action=waiting_rx_resync status=0", 0, 0.1);
+    CHECK(incomplete.accepted(rx) == 0);
+    recover(start, 0.2); ++rx.device_overflows; ++rx.resyncs;
+    CHECK(start.accepted(rx) == 2 && remaining_faults(rx, true, start.accepted(rx)) == 0);
+    recover(start, 3.0); ++rx.device_overflows; ++rx.resyncs;
+    CHECK(start.accepted(rx) == 2 && remaining_faults(rx, true, start.accepted(rx)) == 2);
+    CHECK(throughput_ok(sample_stats(), 2, 30720000, 3));
+    auto low = sample_stats(); low.usb_bytes /= 2;
+    CHECK(!throughput_ok(low, 2, 30720000, 3));
+}
 void long_values_wrap_at_word_boundaries() {
     const std::string value = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho";
     const auto text = plain([&](std::ostream& o) { p::field("A label", value, o); });
@@ -293,6 +371,25 @@ void long_values_wrap_at_word_boundaries() {
     CHECK(joined == value);
     const auto long_label = plain([](std::ostream& o) { p::field("an unusually long label that cannot align", "v", o); });
     CHECK(split_lines(long_label).size() == 2);
+}
+void repeated_overflow_stop() {
+    using namespace stream_assessment;
+    och_event onset{}; onset.type = OCH_EVENT_DEVICE;
+    std::strcpy(onset.message, "EVT type=rx_overflow action=waiting_rx_resync status=0");
+    auto recovery = onset;
+    std::strcpy(recovery.message, "EVT type=rx_overflow action=rx_restarted status=0");
+    repeated_overflow_observer o;
+    o.observe(onset, 0.1); o.observe(onset, 1.0);
+    CHECK(!o.repeated && o.previous < 0);
+    o.observe(onset, 1.1); o.observe(recovery, 1.2);
+    CHECK(!o.repeated);
+    o.observe(onset, 3.2); CHECK(!o.repeated); // Isolated faults do not abort.
+    o.observe(onset, 5.2); CHECK(o.repeated);
+    repeated_overflow_observer unrelated;
+    auto other = onset; other.type = OCH_EVENT_RX_SYNC;
+    unrelated.observe(other, 2); unrelated.observe(other, 2.1);
+    unrelated.observe(onset, std::numeric_limits<double>::quiet_NaN());
+    CHECK(!unrelated.repeated && unrelated.previous < 0);
 }
 void progress_line() {
     p::style ascii_style;
@@ -353,6 +450,9 @@ int main() {
         {"throughput table columns and ratios", throughput_table},
         {"SDK reply grouping, two-column layout and fault colouring", reply_layout},
         {"device discovery and identity views", device_views},
+        {"USB2 references match measured channel/format/firmware only", usb2_references},
+        {"startup recovery allowance preserves faults and rejects later errors", startup_stability},
+        {"fail-fast ignores startup/recovery events and stops repeated overflows", repeated_overflow_stop},
         {"value formatting helpers", value_helpers},
         {"long values wrap at word boundaries without loss", long_values_wrap_at_word_boundaries},
         {"live progress line", progress_line},

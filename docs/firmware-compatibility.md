@@ -47,6 +47,6 @@ USB 2.0 需要同时使用更新后的 UHSIF 固件与重新构建的 OmniCoreHo
 
 HS/FS 配置描述符与 USB3 使用相同的端点分工：01/81 为 IQ 数据，02/82 为 USART1 控制，83 为调试文本。USBHS 的控制与调试 IN 使用小于最大包长的短包；复位、取消配置和清除端点 HALT 会同步处理桥接状态。OCH 支持 512 B 最大包长的 High-Speed，仍拒绝 64 B 最大包长的 Full-Speed。
 
-编译下载 CH32 固件并重新构建主机程序后，重新插拔设备，依次运行 `och-driver check`、`och find`、`och info`。USB 2.0 下预期显示 High-Speed / 0.5 Gbit/s（界面以一位小数显示 480 Mbit/s），且不再出现控制端点缺失、SuperSpeed 限制或 CH32 diagnostics unavailable。再通过 USB3 连接重复检查，并分别验证低采样率 RX/TX、停止重启与重新插拔。
+编译下载 CH32 固件并重新构建主机程序后，重新插拔设备，依次运行 `och-driver check`、`och find`、`och info`。OCH 0.4.3 在 USB2 下精确显示 **480 Mbit/s（High-Speed, USB 2.0）**，且不再出现控制端点缺失、SuperSpeed 限制或 CH32 diagnostics unavailable。再通过 USB3 连接重复检查，并分别验证低采样率 RX/TX、停止重启与重新插拔。
 
-USB 2.0 的持续 IQ 吞吐需要上板实测；不要直接沿用 USB3 的高采样率吞吐结果。此修改未降低 SDK 的射频采样率范围，也未自动改变用户配置。源码静态检查不等于硬件验证，下载后应先确认控制通道，再选择低采样率测试数据流。
+USB2 连续传输已单独上板测量，配置、持续时间和通过记录见 [USB2 测试结果](usb2.md)。`och info` 的 61.44 MSPS 是射频采样率上限，USB2 吞吐参考见 README 和实测报告，且只与本次固件和通道 / 精度配置匹配。此修改未降低 SDK 的射频采样率范围，也未自动改变用户配置；换主机、USB 拓扑或固件后应重新测试。

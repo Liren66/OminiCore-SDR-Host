@@ -7,3 +7,17 @@
 *.a
 *.lib
 *.pdb
+
+# Local caches and temporary files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.tmp
+*.bak
+*.orig
+*.rej
+Thumbs.db
+.DS_Store
+
+# Documentation keeps finished assets only
+/docs/images/src/

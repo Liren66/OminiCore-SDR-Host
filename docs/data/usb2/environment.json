@@ -1,0 +1,22 @@
+{
+  "captured_utc": "2026-10-24T17:59:00.3245196Z",
+  "computer": {
+    "Manufacturer": "LENOVO",
+    "Model": "21SXA000CD",
+    "TotalPhysicalMemory": 33209249792
+  },
+  "cpu": {
+    "Name": "Intel(R) Core(TM) Ultra 7 255H"
+  },
+  "os": {
+    "Caption": "Microsoft Windows 11 家庭版 中文版",
+    "Version": "10.0.26200",
+    "BuildNumber": "26200"
+  },
+  "device": {
+    "Status": "OK",
+    "Class": "libusbk devices",
+    "FriendlyName": "OminiCore SDR",
+    "InstanceId": "USB\\VID_1A86&PID_5537\\OMINICORE00000001"
+  }
+}

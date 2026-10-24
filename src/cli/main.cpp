@@ -189,7 +189,22 @@ void print_info(const och_device_info& i, bool json_mode, const och_power_status
             << ",\"driver\":" << json(i.driver) << ",\"firmware\":" << json(i.firmware)
             << ",\"usb_speed_mbps\":" << i.usb_speed_mbps << ",\"rx_channels\":" << i.rx_channels
             << ",\"tx_channels\":" << i.tx_channels << ",\"max_sample_rate\":" << i.max_sample_rate
+            << ",\"sample_rate_scope\":\"rf_capability\""
             << ",\"hardware_timestamps\":" << (i.hardware_timestamps ? "true" : "false");
+        if (usb2_reference::applies(i)) {
+            std::cout << ",\"usb2_reference\":{\"scope\":\"single_host_observation\",\"date\":"
+                      << json(usb2_reference::date) << ",\"host\":" << json(usb2_reference::host) << ",\"profiles\":[";
+            bool first = true;
+            for (const auto& e : usb2_reference::entries) if (e.rate_hz) {
+                if (!first) std::cout << ',';
+                first = false;
+                std::cout << "{\"mode\":" << json(e.id) << ",\"iq_bits\":" << e.bits
+                    << ",\"rx_mask\":" << (e.rx_channels == 2 ? 3 : e.rx_channels)
+                    << ",\"tx_mask\":" << (e.tx_channels == 2 ? 3 : e.tx_channels)
+                    << ",\"sample_rate_hz\":" << e.rate_hz << ",\"test_seconds\":" << e.seconds << '}';
+            }
+            std::cout << "]}";
+        }
         if (power) std::cout << ",\"power\":" << power_json(*power);
         std::cout << '}';
     } else presentation::device(i, power != nullptr, std::cout);
@@ -309,12 +324,13 @@ struct workers {
 
 int run_stream(const options& opt) {
     auto names = rf_options;
-    for (auto n : {"seconds", "file", "format", "tone", "amplitude", "buffer-mib", "queue", "block", "loop", "overwrite", "rx", "tx"}) names.insert(n);
+    for (auto n : {"seconds", "file", "format", "tone", "amplitude", "buffer-mib", "queue", "block", "loop", "overwrite", "rx", "tx", "fail-fast"}) names.insert(n);
     allowed(opt, names);
     bool bench = opt.command == "bench", do_rx = opt.command == "rx" || (bench && opt.has("rx"));
     bool do_tx = opt.command == "tx" || (bench && opt.has("tx"));
     if (bench && !do_rx && !do_tx) throw std::invalid_argument("bench needs --rx, --tx or both");
     if (!bench && (opt.has("rx") || opt.has("tx"))) throw std::invalid_argument("--rx and --tx are bench options");
+    if (!bench && opt.has("fail-fast")) throw std::invalid_argument("--fail-fast is a bench option");
     if (bench && opt.has("file")) throw std::invalid_argument("bench does not write/read files; use rx or tx");
     if (!do_tx && (opt.has("tone") || opt.has("amplitude") || opt.has("loop"))) throw std::invalid_argument("tone/amplitude/loop require TX");
     if (opt.has("file") && opt.has("tone")) throw std::invalid_argument("choose a TX file or a tone");
@@ -373,6 +389,11 @@ int run_stream(const options& opt) {
         presentation::field("Sample format", format_name(format) + "  (USB wire " + (config.usb_iq_bits==8?"sc8)":"packed12)"), std::cout);
         if (opt.has("file")) presentation::field(do_rx ? "Capture file" : "Input file", opt.get("file"), std::cout);
         presentation::group("Transport", std::cout);
+        presentation::field("USB link", std::to_string(device.info().usb_speed_mbps) + " Mbit/s", std::cout);
+        const double wire_MBps = static_cast<double>(config.sample_rate) * wire_sample_bytes(config) *
+            ((do_rx ? channel_count(config.rx_mask) : 0) + (do_tx ? channel_count(config.tx_mask) : 0)) / 1e6;
+        presentation::field("RX + TX wire demand", display_number(wire_MBps, 2) + " MB/s", std::cout);
+        presentation::usb2_stream_reference(device.info(), config, std::cout);
         presentation::field("Host buffer", display_number(args.host_buffer_bytes / 1048576.0, 0) + " MiB per direction", std::cout);
         presentation::field("USB requests", std::to_string(args.usb_queue_depth) + " x " + std::to_string(args.transfer_bytes) + " bytes", std::cout);
         presentation::end_group(std::cout);
@@ -380,6 +401,13 @@ int run_stream(const options& opt) {
         std::cout << '\n';
         presentation::status(presentation::level::prep, "Allocating buffers and preparing streams.", std::cout);
         std::cout << std::flush;
+    }
+    if (opt.has("json")) {
+        const auto* ref = usb2_reference::find(device.info(), config);
+        if (ref && config.sample_rate > ref->rate_hz)
+            std::cerr << "{\"type\":\"warning\",\"code\":\"usb2_reference_exceeded\",\"reference_rate_hz\":"
+                      << ref->rate_hz << ",\"test_seconds\":" << ref->seconds
+                      << ",\"scope\":\"single_host_observation\"}\n";
     }
     if (do_rx && opt.has("file")) {
         output.open(std::filesystem::u8path(opt.get("file")), std::ios::binary | std::ios::trunc);
@@ -496,12 +524,21 @@ int run_stream(const options& opt) {
     uint64_t previous_rx_bytes = progress.enabled() && rx ? rx->stats().usb_bytes : 0;
     uint64_t previous_tx_bytes = progress.enabled() && tx ? tx->stats().usb_bytes : 0;
     uint64_t event_count = 0;
+    stream_assessment::startup_observer startup;
+    stream_assessment::repeated_overflow_observer repeated_overflow;
+    bool stopped_early = false;
     auto event_drain = [&] {
         och_event event{};
         while (device.poll_event(event)) {
             ++event_count;
+            const double observed_seconds = std::chrono::duration<double>(clock_type::now() - begin).count();
+            startup.observe(event, observed_seconds);
+            repeated_overflow.observe(event, observed_seconds);
             if (opt.has("json")) std::cerr << "{\"type\":\"event\",\"sequence\":" << event.sequence
-                << ",\"event_type\":" << event.type << ",\"epoch\":" << event.epoch << ",\"message\":" << json(event.message) << "}\n";
+                << ",\"event_type\":" << event.type << ",\"epoch\":" << event.epoch
+                << ",\"host_monotonic_ns\":" << event.host_monotonic_ns
+                << ",\"observed_seconds\":" << std::setprecision(17) << observed_seconds
+                << ",\"message\":" << json(event.message) << "}\n";
             else {
                 progress.clear();
                 presentation::event(event, std::chrono::duration<double>(clock_type::now() - begin).count(), std::cerr);
@@ -510,6 +547,7 @@ int run_stream(const options& opt) {
     };
     while (!interrupted && !work.failed) {
         event_drain();
+        if (opt.has("fail-fast") && repeated_overflow.repeated) { stopped_early = true; break; }
         auto now = clock_type::now();
         if (progress.enabled() && now - previous_progress >= std::chrono::seconds(1)) {
             double elapsed = std::chrono::duration<double>(now - begin).count();
@@ -553,20 +591,34 @@ int run_stream(const options& opt) {
     och_stats rs{}, ts{};
     if (rx) rs = rx->stats();
     if (tx) ts = tx->stats();
+    const auto startup_accepted = rx ? startup.accepted(rs) : 0;
+    const auto rx_remaining = rx ? stream_assessment::remaining_faults(rs, true, startup_accepted) : 0;
+    const auto tx_remaining = tx ? stream_assessment::remaining_faults(ts, false, startup_accepted) : 0;
+    const bool stable = !interrupted && !stopped_early && !rx_remaining && !tx_remaining &&
+        (!rx || stream_assessment::throughput_ok(rs, channel_count(config.rx_mask), config.sample_rate, wire_sample_bytes(config))) &&
+        (!tx || stream_assessment::throughput_ok(ts, channel_count(config.tx_mask), config.sample_rate, wire_sample_bytes(config)));
     if (output.is_open()) { output.flush(); metadata << "{\"type\":\"end\",\"stats\":" << stats_json(rs, channel_count(config.rx_mask)) << "}\n"; metadata.flush();
         if (!output || !metadata) throw std::runtime_error("RX output flush failed"); }
     if (opt.has("json")) {
         std::cout << "{\"command\":" << json(opt.command) << ",\"config\":" << config_json(config)
             << ",\"format\":" << json(format_name(format)) << ",\"events\":" << event_count
-            << ",\"interrupted\":" << (interrupted ? "true" : "false");
+            << ",\"interrupted\":" << (interrupted ? "true" : "false")
+            << ",\"stopped_early\":" << (stopped_early ? "true" : "false");
+        std::cout << ",\"stability\":{\"startup_window_seconds\":" << stream_assessment::startup_seconds
+            << ",\"policy\":\"recovered_rx_overflows_within_window\""
+            << ",\"accepted_startup_overflows\":" << startup_accepted
+            << ",\"rx_remaining_faults\":" << rx_remaining << ",\"tx_remaining_faults\":" << tx_remaining
+            << ",\"pass\":" << (stable ? "true" : "false") << '}';
         if (rx) std::cout << ",\"rx\":" << stats_json(rs, channel_count(config.rx_mask));
         if (tx) std::cout << ",\"tx\":" << stats_json(ts, channel_count(config.tx_mask));
         std::cout << "}\n";
     } else {
         std::cout << std::flush;
         presentation::section("Stream complete", std::cout);
-        presentation::field("Stop reason", interrupted ? "User interruption (Ctrl+C)" : work.eof ? "TX source reached end of file" : "Requested duration reached", std::cout);
+        presentation::field("Stop reason", interrupted ? "User interruption (Ctrl+C)" : stopped_early ? "Repeated RX overflows after startup" : work.eof ? "TX source reached end of file" : "Requested duration reached", std::cout);
         presentation::field("Events received", event_count, std::cout, event_count ? presentation::tone::plain : presentation::tone::muted);
+        presentation::field("Startup RX recoveries", startup_accepted, std::cout);
+        presentation::note("Stability permits RX overflows recovered within the first second; all raw counters stay visible.", std::cout);
         const unsigned wire = wire_sample_bytes(config);
         auto row = [&](const char* name, const och_stats& st, uint32_t mask) {
             const double secs = st.elapsed_ns / 1e9;
@@ -574,7 +626,7 @@ int run_stream(const options& opt) {
             return presentation::throughput_row{name, ch, config.sample_rate, secs, secs > 0 ? st.usb_bytes / secs / 1e6 : 0,
                 static_cast<double>(config.sample_rate) * ch * wire / 1e6,
                 st.transfer_errors + st.host_dropped_samples + st.device_overflows + st.device_underflows +
-                st.event_drops + st.tx_starvation_events + st.resyncs};
+                st.event_drops + st.tx_starvation_events + st.resyncs + st.tx_padding_samples};
         };
         std::vector<presentation::throughput_row> rows;
         if (rx) rows.push_back(row("RX", rs, config.rx_mask));
@@ -592,10 +644,10 @@ int run_stream(const options& opt) {
             presentation::field("Boundary metadata", opt.get("file") + ".metadata.jsonl", std::cout);
             presentation::end_group(std::cout);
         }
-        if (rx) presentation::stats(OCH_RX, rs, channel_count(config.rx_mask), config.sample_rate, std::cout, wire);
-        if (tx) presentation::stats(OCH_TX, ts, channel_count(config.tx_mask), config.sample_rate, std::cout, wire);
+        if (rx) presentation::stats(OCH_RX, rs, channel_count(config.rx_mask), config.sample_rate, std::cout, wire, startup_accepted);
+        if (tx) presentation::stats(OCH_TX, ts, channel_count(config.tx_mask), config.sample_rate, std::cout, wire, startup_accepted);
     }
-    return interrupted ? 130 : 0;
+    return interrupted ? 130 : stopped_early ? 3 : 0;
 }
 
 std::string fir_json(const och_fir_config& f) {
