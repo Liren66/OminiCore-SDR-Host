@@ -1,5 +1,4 @@
 #include "internal.hpp"
-#include <algorithm>
 #include <charconv>
 #include <sstream>
 using namespace och::core;
@@ -35,6 +34,46 @@ void valid(const och_fir_config& c) {
     require(!(c.direction==OCH_TX&&c.factor==1&&c.tap_count>64),OCH_INVALID,"TX factor 1 permits at most 64 taps");
 }
 std::string csv(const uint32_t* p){std::string s;for(unsigned i=0;i<6;++i){if(i)s+=',';s+=std::to_string(p[i]);}return s;}
+// Mirrors ad9361_calculate_rf_clock_chain() of the ADI driver in the SDK
+// (rate_governor 1, rx_eq_2tx 0): the BBPLL rate it targets for this sample
+// rate and FIR decimation/interpolation, or 0 when no divider chain exists.
+uint64_t planned_bbpll(uint32_t rate,uint32_t rx_intdec,uint32_t tx_intdec) {
+    static const uint32_t dividers[7][4]={{12,3,2,2},{8,2,2,2},{6,3,1,2},{4,2,2,1},{3,3,1,1},{2,2,1,1},{1,1,1,1}};
+    constexpr uint64_t min_adc=25000000,max_adc=640000000,max_dac=320000000,max_bbpll=1430000000;
+    if(!rate||rate>61440000)return 0;
+    const uint64_t clkrf=uint64_t(rate)*rx_intdec,clktf=uint64_t(rate)*tx_intdec;
+    int governor=1;
+    for(;;) {
+        bool recursion=true;
+        if(governor==1&&clkrf*8<min_adc){recursion=false;governor=0;}
+        uint64_t adc=0;int index_rx=-1,index_tx=-1;
+        for(int i=governor;i<7;++i) {
+            adc=clkrf*dividers[i][0];const uint64_t dac=clktf*dividers[i][0];
+            if(adc>max_adc||adc<min_adc)continue;
+            const int64_t tmp=dac>adc?-int64_t(dac/adc):int64_t(adc/dac);
+            index_rx=i;
+            if(adc<=max_dac)index_tx=int(i-(tmp==1?0:tmp));
+            else index_tx=(i==4&&tmp>=0)?7:int(i+((i==5&&tmp>=0)?1:2)-(tmp==1?0:tmp));
+            break;
+        }
+        if(index_rx<0||index_rx>6||index_tx<0||index_tx>6) {
+            if(governor<7&&recursion){++governor;continue;}
+            return 0;
+        }
+        uint64_t bbpll=0;
+        for(uint32_t div=64;;div>>=1){bbpll=adc*div;if(bbpll<=max_bbpll||div<=2)break;}
+        return bbpll;
+    }
+}
+// ad9361_bbpll_round_rate() picks the nearest fractional word (modulus
+// 2088960) and recalc_rate() floors; the SDK accepts the plan only when the
+// programmed BBPLL reads back as exactly the requested rate.
+bool bbpll_exact(uint64_t bbpll,uint64_t reference) {
+    constexpr uint64_t modulus=2088960;
+    if(!reference||bbpll<715000000||bbpll>1430000000)return false;
+    const uint64_t integer=bbpll/reference,fract=((bbpll%reference)*modulus+reference/2)/reference;
+    return reference*fract/modulus+reference*integer==bbpll;
+}
 void clocks(const std::string& s,uint32_t* out) {
     size_t at=0;
     for(unsigned i=0;i<6;++i){auto end=s.find(',',at);require((end!=std::string::npos)==(i<5),OCH_PROTOCOL,"SDK clock chain must contain six rates");
@@ -313,35 +352,43 @@ void och_device::set_sample_rate(uint32_t rate) {
     bool was=configured;configured=false;transport_dirty=true;
     config.sample_rate=apply_sample_rate(rate);configured=was;
 }
-// The SDK programs the fractional-N BBPLL (40 MHz reference, modulus
-// 2088960) and rejects the plan when the readback differs from the request,
-// e.g. 11.2 MSPS needs BBPLL 716.8 MHz. A BBPLL that is a multiple of
-// 15.625 kHz is exact, and every clock plan has BBPLL = Fs x integer, so rates
-// on that grid are representable. When a rate is rejected, try the nearest
-// grid rates, alternating sides, and return the one the device accepts.
+// The SDK rejects a rate whose fractional-N BBPLL cannot be programmed
+// exactly, e.g. 11.2 MSPS needs 716.8 MHz. Plan on the host instead of
+// probing: mirror the driver's clock-chain choice for the current FIR
+// factors and take the nearest whole-Hz rate (+d before -d) whose BBPLL
+// round-trips, typically ~11 Hz away. One SDK attempt then suffices. If the
+// SDK still rejects it (model out of step with firmware), search the device
+// 1 Hz at a time as before.
 uint32_t och_device::apply_sample_rate(uint32_t rate) {
-    constexpr uint32_t step=15625,max_rate=61440000,max_attempts=6;
+    constexpr uint32_t max_rate=61440000,max_plan_offset=4096,max_probe_offset=64;
     const auto attempt=[&](uint32_t hz){
         command("clock_sample_rate="+std::to_string(hz),15000);auto actual=get_clock();
         require(actual.rx_hz[5]==hz&&actual.tx_hz[5]==hz,OCH_PROTOCOL,"sample rate readback mismatch");
     };
     const auto clock_rejected=[](const Failure& f){return f.code==OCH_PROTOCOL&&std::string(f.what()).find("fir_or_clock_apply")!=std::string::npos;};
-    try{attempt(rate);requested_sample_rate=rate;return rate;}
+    // The current chain carries the FIR factors: RF/Fs on each side.
+    const auto now=get_clock();
+    const uint32_t rx_intdec=now.rx_hz[5]?now.rx_hz[4]/now.rx_hz[5]:1,tx_intdec=now.tx_hz[5]?now.tx_hz[4]/now.tx_hz[5]:1;
+    const auto plannable=[&](uint64_t hz){
+        if(hz<1||hz>max_rate)return false; // rate-d below 0 wraps above max_rate
+        const auto bbpll=planned_bbpll(static_cast<uint32_t>(hz),rx_intdec,tx_intdec);
+        return bbpll&&bbpll_exact(bbpll,now.reference_hz);
+    };
+    uint32_t target=rate;
+    if(planned_bbpll(rate,rx_intdec,tx_intdec)&&!plannable(rate)) {
+        for(uint32_t d=1;d<=max_plan_offset&&target==rate;++d)
+            for(const uint64_t hz:{uint64_t(rate)+d,uint64_t(rate)-d})
+                if(plannable(hz)){target=static_cast<uint32_t>(hz);break;}
+    }
+    try{attempt(target);requested_sample_rate=rate;return target;}
     catch(const Failure& original) {
         if(!clock_rejected(original))throw;
-        std::vector<uint32_t> candidates;
-        const uint32_t below=rate/step*step;
-        for(uint32_t i=0;i<max_attempts;++i) {
-            if(below>step*i)candidates.push_back(below-step*i);
-            if(uint64_t(below)+step*(i+1)<=max_rate)candidates.push_back(below+step*(i+1));
-        }
-        candidates.erase(std::remove(candidates.begin(),candidates.end(),rate),candidates.end());
-        std::stable_sort(candidates.begin(),candidates.end(),[rate](uint32_t a,uint32_t b){
-            return (a>rate?a-rate:rate-a)<(b>rate?b-rate:rate-b);});
-        if(candidates.size()>max_attempts)candidates.resize(max_attempts);
-        for(auto hz:candidates) {
-            try{attempt(hz);requested_sample_rate=rate;return hz;}
-            catch(const Failure& f){if(!clock_rejected(f))throw;}
+        for(uint32_t d=1;d<=max_probe_offset;++d) {
+            for(const uint64_t hz:{uint64_t(rate)+d,uint64_t(rate)-d}) {
+                if(hz<1||hz>max_rate||hz==target)continue;
+                try{attempt(static_cast<uint32_t>(hz));requested_sample_rate=rate;return static_cast<uint32_t>(hz);}
+                catch(const Failure& f){if(!clock_rejected(f))throw;}
+            }
         }
         throw;
     }

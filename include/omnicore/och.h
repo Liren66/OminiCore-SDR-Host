@@ -186,9 +186,9 @@ OCH_API int och_get_clock(och_device*, och_clock_config*);
 OCH_API int och_set_clock(och_device*, const och_clock_config*);
 /* Sample rate (also och_configure): if the SDK has no exact clock plan for
  * the rate, e.g. 11.2 MSPS needs a BBPLL its fractional-N cannot hit exactly,
- * the nearest accepted rate on a 15.625 kHz grid is applied instead. Read
- * the applied rate with och_get_config or och_get_clock. Rates outside the
- * clock/FIR limits still fail. */
+ * the nearest whole-Hz rate that it can hit is applied instead (11200011 Hz,
+ * typically within ~20 Hz). Read the applied rate with och_get_config or
+ * och_get_clock. Rates outside the clock/FIR limits still fail. */
 OCH_API int och_set_sample_rate(och_device*, uint32_t sample_rate_hz);
 /* Requires SDK system_info rx_correction=1. get reads both current enables.
  * Setters preserve the other correction and verify readback. Unsupported

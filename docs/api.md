@@ -113,7 +113,7 @@ FIR 配置先清零、填 struct_size、direction、channel_mask=3、factor、ta
 
 clock 的 rx_hz 是 BBPLL/ADC/R2/R1/RF/Fs，tx_hz 是 BBPLL/DAC/T2/T1/TF/Fs，单位均 Hz。reference_hz 读取固定 40 MHz 板级参考钟，写入 0 表示保持。0.3.2 的 `och_set_reference_source` 可通过 ADF4002 启用外部 10 MHz 驯服，但 AD9361 输入仍为 40 MHz，不能通过 `och_set_clock` 改这个值。RX/TX 的 BBPLL 和 Fs 必须一致。合法分频和 FIR 约束由 SDK 验证，不接受隐式降低采样率来满足限制。
 
-**最近可用采样率**：BBPLL 为小数分频（40 MHz 参考，模数 2088960），SDK 要求回读与请求逐 Hz 一致，因此部分速率会因分频舍入被拒绝，例如 11.2 MSPS 需要 716.8 MHz 的 BBPLL。`och_set_sample_rate` 与 `och_configure` 遇到这种拒绝（`ERR fir_or_clock_apply`）时，会按距离由近到远、两侧交替尝试 15.625 kHz 整数倍的速率（最多 6 次）；这些速率的 BBPLL 可被精确表示。成功后实际速率写入 `och_get_config` 的 `sample_rate`，11.2 MSPS 会变为 11.203125 MSPS。同一句柄再次请求原速率时直接沿用，不重复尝试。超出时钟或 FIR 范围的速率（如未启用 FIR 抽取时的 1 MSPS）仍按原错误失败。`och_set_clock` 指定的完整时钟链不做替换。
+**最近可用采样率**：BBPLL 为小数分频（40 MHz 参考，模数 2088960），驱动按最近的小数字编程、回读时向下取整，SDK 要求回读与请求逐 Hz 一致，因此部分速率会被拒绝，例如 11.2 MSPS 需要 716.8 MHz 的 BBPLL。`och_set_sample_rate` 与 `och_configure` 在主机端复现 AD9361 驱动 `ad9361_calculate_rf_clock_chain` 的时钟链选择（按当前 FIR 抽取 / 插值因子）及 BBPLL 舍入，从请求值开始按 +1、−1、+2、−2 Hz…… 找到第一个能精确实现的整 Hz 速率，只向设备提交一次。11.2 MSPS 会变为 11200011 Hz，偏差通常在 20 Hz 以内（全范围建模最大约 33 Hz）。若设备仍拒绝（固件与模型不一致），再在设备上逐 Hz 尝试，最多 ±64 Hz。实际速率写入 `och_get_config` 的 `sample_rate`；同一句柄再次请求原速率时直接沿用。超出时钟或 FIR 范围的速率（如未启用 FIR 抽取时的 1 MSPS）仍按原错误失败。`och_set_clock` 指定的完整时钟链不做替换。
 
 0.3 起，typed FIR/clock 写操作使用上述协调重配置流程，可在已有流时调用；所有管理操作仍应串行执行。硬件写入失败后双方停止，销毁旧流，在必要的 rf.reinit 成功后重新 configure 并创建流；不要把失败前缓存当成已知实际状态。成功的 FIR 修改保留当前 Fs；正常 configure 保留已装载的 FIR。换 Fs 后要重新确认频响。原始命令 och_command 的修改仍要求无流对象，且会使配置缓存失效。
 
