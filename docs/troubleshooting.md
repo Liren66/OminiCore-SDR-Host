@@ -14,7 +14,7 @@ och power status 使用现有 CH32 EP83 启动日志，只有完整、无冲突�
 
 ## 吞吐低、RX 间断或 TX 欠流
 
-USB2 先查看 README 的稳定采样率表和 [USB2 测试结果](usb2.md)，按收发通道数与 IQ 精度选择速率。`RF sample-rate ceiling` 的 61.44 MSPS 不是 USB2 可持续速率。短测通过仍可能在几分钟后欠流，应对选定档位重复长测；默认的 30.72 MSPS 示例面向 USB3。
+USB2 先查看 README 测试结果中的 USB2 表和 [USB2 测试结果](usb2.md)，按收发通道数与 IQ 精度选择速率。`RF sample-rate ceiling` 的 61.44 MSPS 不是 USB2 可持续速率。短测通过仍可能在几分钟后欠流，应对选定档位重复长测；默认的 30.72 MSPS 示例面向 USB3。
 
 先运行不写盘的 packed12 benchmark，再测试文件和格式转换。双 RX 满速 wire 为 368.64 MB/s，保存 fc32 约 983.04 MB/s；磁盘短时缓存快不代表持续写入达标。
 

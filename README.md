@@ -13,11 +13,12 @@ OmniCore Host 是 **OmniCoreSDR**（AD9361 + Zynq + CH32H417 USB 桥）的主机
 1. [功能](#功能)
 2. [快速上手](#快速上手)
 3. [命令行](#命令行)
-4. [性能参考](#性能参考)
-5. [C/C++ 开发](#cc-开发)
-6. [从源码构建与打包](#从源码构建与打包)
-7. [工程目录](#工程目录)
-8. [文档索引](#文档索引)
+4. [Linux 配置](#linux-配置)
+5. [测试结果](#测试结果)
+6. [C/C++ 开发](#cc-开发)
+7. [从源码构建与打包](#从源码构建与打包)
+8. [工程目录](#工程目录)
+9. [文档索引](#文档索引)
 
 ## 功能
 
@@ -55,7 +56,7 @@ sudo install -m 0644 packaging/60-omnicore.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 ```
 
-运行无需 sudo；SSH 用户需加入 `plugdev` 组。详见 [Windows 安装](docs/INSTALL_WINDOWS.txt) / [Linux 安装](docs/INSTALL_LINUX.md)。
+运行无需 sudo。USB 权限、目录布局与性能参数见 [Linux 配置](#linux-配置)；完整说明见 [Windows 安装](docs/INSTALL_WINDOWS.txt) / [Linux 安装](docs/INSTALL_LINUX.md)。
 
 ### 2. 连接设备
 
@@ -159,35 +160,104 @@ och set fan.enabled on
 
 完整参数见 [命令行参考](docs/cli.md)。
 
-## 性能参考
+## Linux 配置
 
-理论 wire 速率 = 采样率 × 通道数 × 每样本字节（12bit 为 3，8bit 为 2）。以下为实测平均值，包含流启停开销。
+Linux 版提供与 Windows 相同的 `och` 命令行、C ABI 1 和 C++ 包装，底层使用 libusb 1.0 异步传输。已在 Ubuntu 24.04.3 x86_64 + USB3 上验证；其他发行版建议从源码构建，ARM64 与 Linux 下的 USB2 性能尚未测试。
 
-### USB 3.0（5 Gbit/s）
+| 项目 | 配置 |
+|---|---|
+| 依赖 | `build-essential cmake ninja-build pkg-config libusb-1.0-0-dev`；运行时只需 `libusb-1.0-0` |
+| USB 权限 | 安装 `packaging/60-omnicore.rules`（只匹配 `1a86:5537`）。桌面会话经 uaccess 授权；SSH 用户执行 `sudo usermod -aG plugdev "$USER"` 后重新登录，并重新插拔设备 |
+| 安装布局 | 推荐 `/opt/omnicore/<版本>`，再把 `bin/och` 软链接到 `/usr/local/bin`。程序使用相对 RPATH，无需 `LD_LIBRARY_PATH`；需保持 `bin/` 与 `lib/` 的相对位置 |
+| 发布归档 | 解压 `OmniCoreHost-0.4.3-linux-x86_64.tar.gz` 后整体复制到安装目录；udev 规则同时位于 `share/omnicore/60-omnicore.rules` |
+| USB 队列 | 默认每方向 32 × 196608 B，在系统默认 `usbfs_memory_mb=16` 下即可满速。仅在增大 `--queue` / `--block` 后出现 `LIBUSB_ERROR_NO_MEM` 时才需调高该内核参数，程序不会自动修改 |
+| 主机缓冲 | `--buffer-mib` 调整用户态环形缓冲（默认 64 MiB），与内核 USB 队列预算无关 |
+| 构建参数 | `tools/build-linux.sh` 支持 `OCH_JOBS`（并发数）、`OCH_BUILD_DIR`、`OCH_INSTALL_DIR`；脚本优先使用 `/usr/bin` 下的工具，避免被其他 SDK 的旧版 CMake 覆盖 |
 
-![USB3 吞吐实测](docs/images/throughput.svg)
+```bash
+och info                     # 若报 LIBUSB_ERROR_ACCESS，检查 udev 规则与 plugdev 组
+ldd "$(readlink -f /usr/local/bin/och)"   # 按真实路径检查动态库解析
+och bench --rx --tx --iq-bits 8 --channels 1,2 --sample-rate 61.44M \
+  --seconds 60 --amplitude 0 --attenuation 89.75 --json   # 检查 stability.pass
+```
 
-| 配置 | RX / TX MB/s | 理论 MB/s | 错误 |
-|---|---:|---:|---:|
-| 2RX，61.44 MSPS，12bit | 367.2 / — | 368.6 | 0 |
-| 2TX，61.44 MSPS，12bit | — / 362.0 | 368.6 | 0 |
-| 2RX + 2TX，30.72 MSPS，12bit | 183.4 / 180.9 | 184.3 | 0 |
-| 1RX + 1TX，61.44 MSPS，12bit | 183.8 / 180.7 | 184.3 | 0 |
-| 2RX + 2TX，61.44 MSPS，8bit，300 秒 | 245.7 / 245.7 | 245.8 | 0 |
+## 测试结果
 
-Windows 11 与 Ubuntu 24.04 下 8bit 四通道 61.44 MSPS 均完成 300 秒零错误运行。
+吞吐使用 `och bench` 测量，取整个流生命周期的平均值（含启停开销），MB/s 为十进制。理论 wire 速率 = 采样率 × 通道数 × 每样本字节（12bit 为 3，8bit 为 2）。“错误”指主机丢样、USB 传输错误、设备溢出 / 欠流、事件丢失与 TX 断供的合计。
 
-### USB 2.0 High-Speed（480 Mbit/s）
+### 测试环境
 
-USB2 下 RX 与 TX 共享链路预算，需按通道数和精度选择采样率（每项连续 300 秒，1 秒后零新增错误）：
+| | Windows | Linux |
+|---|---|---|
+| 主机 | ThinkPad E14 Gen 7，Core Ultra 7 255H，32 GB | AMD Ryzen 5 5500U，6 核 12 线程 |
+| 系统 | Windows 11 25H2（build 26200） | Ubuntu 24.04.3，Linux 7.0 x86_64 |
+| USB 驱动 | libusbK 3.1.0.0 | libusb 1.0.27（usbfs） |
+| 编译器 | MinGW-w64 GCC，Release | GCC 13.3，Release |
+| 板卡固件 | `SDK_CMD_1.0_20261024_IQ8` | `SDK_CMD_1.0_20261024_IQ8` |
+| 缓冲配置 | 每方向 32 × 196608 B USB 请求，64 MiB 环形缓冲 | 同左，`usbfs_memory_mb=16`（系统默认） |
+
+### USB 3.0 · Windows
+
+![USB3 吞吐实测（Windows）](docs/images/throughput.svg)
+
+| 配置 | USB IQ | 时长 | RX / TX MB/s | 理论 MB/s | 比例 RX / TX | 错误 |
+|---|---:|---:|---:|---:|---:|---:|
+| 2 RX · 61.44 MSPS | 12bit | 5 秒 | 367.2 / — | 368.6 | 99.6% / — | 0 |
+| 1 RX · 61.44 MSPS | 12bit | 5 秒 | 183.6 / — | 184.3 | 99.6% / — | 0 |
+| 2 TX · 61.44 MSPS | 12bit | 5 秒 | — / 362.0 | 368.6 | — / 98.2% | 0 |
+| 2 RX + 2 TX · 30.72 MSPS | 12bit | 5 秒 | 183.4 / 180.9 | 184.3 | 99.5% / 98.1% | 0 |
+| 1 RX + 1 TX · 61.44 MSPS | 12bit | 5 秒 | 183.8 / 180.7 | 184.3 | 99.7% / 98.1% | 0 |
+| 2 RX + 2 TX · 50 MSPS | 8bit | 5 秒 | 199.2 / 196.3 | 200.0 | 99.6% / 98.1% | 0 |
+| 2 RX + 2 TX · 61.44 MSPS | 8bit | 300 秒 | 245.7 / 245.7 | 245.8 | 100.0% / 100.0% | 0 |
+
+### USB 3.0 · Linux
+
+![USB3 吞吐实测（Linux）](docs/images/linux-throughput.svg)
+
+| 配置 | USB IQ | 时长 | RX / TX MB/s | 理论 MB/s | 比例 RX / TX | 错误 |
+|---|---:|---:|---:|---:|---:|---:|
+| 2 RX · 61.44 MSPS | 12bit | 60 秒 | 368.6 / — | 368.6 | 99.98% / — | 0 |
+| 1 RX · 61.44 MSPS | 12bit | 60 秒 | 184.3 / — | 184.3 | 99.98% / — | 0 |
+| 2 TX · 61.44 MSPS | 12bit | 60 秒 | — / 368.1 | 368.6 | — / 99.85% | 0 |
+| 2 RX + 2 TX · 30.72 MSPS | 12bit | 60 秒 | 184.3 / 184.0 | 184.3 | 99.98% / 99.85% | 0 |
+| 1 RX + 1 TX · 61.44 MSPS | 12bit | 60 秒 | 184.3 / 184.0 | 184.3 | 99.98% / 99.85% | 0 |
+| 2 RX + 2 TX · 50 MSPS | 8bit | 300 秒 | 200.0 / 199.9 | 200.0 | 100.0% / 99.97% | 0 |
+| 2 RX + 2 TX · 61.44 MSPS | 8bit | 300 秒 | 245.8 / 245.7 | 245.8 | 100.0% / 99.97% | 0 |
+
+Linux 测试的 TX 发送零 IQ、衰减 89.75 dB；所有档位 `stability.pass=true`，未调整内核 USB 内存配额、实时调度或 CPU 电源策略。
+
+### USB 2.0 High-Speed · Windows
+
+USB2 下 RX 与 TX 共享 480 Mbit/s 链路预算，下表为按 0.5 MSPS 步进得到的稳定采样率（每通道），每项连续运行 300 秒：
 
 ![USB2 吞吐实测](docs/images/usb2-throughput.svg)
 
-| 配置 | 1 RX | 2 RX | 1 TX | 2 TX | 1RX+1TX | 2RX+2TX | 2RX+2TX 8bit |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 稳定采样率（MSPS/通道） | **14** | **7** | **14** | **6.5** | **7** | **3.5** | **5** |
+| 配置 | USB IQ | 时长 | RX / TX MB/s | 理论 MB/s | 比例 RX / TX | 错误 |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 RX · **14** MSPS | 12bit | 300 秒 | 42.0 / — | 42.0 | 100.0% / — | 0 |
+| 2 RX · **7** MSPS | 12bit | 300 秒 | 42.0 / — | 42.0 | 100.0% / — | 0 |
+| 1 TX · **14** MSPS | 12bit | 300 秒 | — / 42.0 | 42.0 | — / 99.97% | 0 |
+| 2 TX · **6.5** MSPS | 12bit | 300 秒 | — / 39.0 | 39.0 | — / 99.97% | 0 |
+| 1 RX + 1 TX · **7** MSPS | 12bit | 300 秒 | 21.0 / 21.0 | 21.0 | 100.0% / 99.97% | 0 |
+| 2 RX + 2 TX · **3.5** MSPS | 12bit | 300 秒 | 21.0 / 21.0 | 21.0 | 100.0% / 99.97% | 0 |
+| 2 RX + 2 TX · **5** MSPS | 8bit | 300 秒 | 20.0 / 20.0 | 20.0 | 100.0% / 99.97% | 0 |
 
-USB2 需要支持 USBHS 的 CH32 固件。测试条件详见 [USB2 稳定传输](docs/usb2.md)；结果与主机和 USB 拓扑有关。
+USB2 测试的 TX 为 1 MHz 正弦、幅度 0.25、衰减 60 dB。启动后 1 秒内允许 RX 溢出并完成重同步（1 RX、1 RX + 1 TX 与 8bit 全双工各出现 1–2 次），之后零新增错误。USB2 需要支持 USBHS 的 CH32 固件，详见 [USB2 稳定传输](docs/usb2.md)。
+
+### 功能测试
+
+| 项目 | 平台 | 结果 |
+|---|---|---|
+| 数字接口自检 | Windows / Linux | RX PRBS 与 TX 数字回环通过 |
+| CLI 功能检查 | Linux | 20 / 20 通过：设备信息、时钟、FIR、温度、SC16 / FC32 / packed12 采集与元数据、独占访问、Ctrl+C 退出与重开、文件保护、循环回放、非法参数 |
+| 运行中改参 | Windows / Linux | RX、零 IQ TX、双向及 FIR / 时钟操作后原流恢复收发，以新 epoch 标记间断 |
+| 参考与外部 LO | Windows | 参考 / LO 11 项检查与 3 次运行中切换通过；ADF4002 D5 自检闪烁序列确认 |
+| RX 校正 | Windows | DC / IQ 跟踪 18 项检查与 6 次运行中切换通过 |
+| PPS 监控 | Windows | 真实 PPS 下 30.72 MSPS 读数 122880000–122880001 Hz，频偏收敛至 0–0.008 ppm |
+| SDK 集成 | Linux | 独立 C / C++ CMake 工程链接发布包并运行；移动安装目录后仍可运行 |
+
+> [!NOTE]
+> 以上结果来自所列主机，USB 吞吐与主机控制器、端口和线材有关，更换环境后建议用 `och bench --json` 复核 `stability.pass`。测试只覆盖数据链路与控制功能，不包含 RF 功率、EVM、灵敏度等射频指标。
 
 ## C/C++ 开发
 
