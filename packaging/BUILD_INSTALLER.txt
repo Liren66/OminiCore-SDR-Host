@@ -9,7 +9,8 @@ Build requirements
 Application stage
   Build the OCH source with tools/build.ps1. Its CMake install stage contains:
     bin/och.exe, bin/omnicore.dll
-    include/omnicore/, lib/, docs/, examples/, README.md, LICENSE
+    include/omnicore/, lib/, docs/, examples/, README.md, LICENSE,
+    LICENSE-MIT, LICENSE-GPL-3.0
   Prepare an empty staging directory before CMake install. Installing over an old
   stage does not remove obsolete files. build-package.ps1 rejects unexpected root
   entries, SDK firmware, test/debug directories, debug files and extra executables.
