@@ -50,3 +50,9 @@ HS/FS 配置描述符与 USB3 使用相同的端点分工：01/81 为 IQ 数据�
 编译下载 CH32 固件并重新构建主机程序后，重新插拔设备，依次运行 `och-driver check`、`och find`、`och info`。OCH 0.4.3 在 USB2 下精确显示 **480 Mbit/s（High-Speed, USB 2.0）**，且不再出现控制端点缺失、SuperSpeed 限制或 CH32 diagnostics unavailable。再通过 USB3 连接重复检查，并分别验证低采样率 RX/TX、停止重启与重新插拔。
 
 USB2 连续传输已单独上板测量，配置、持续时间和通过记录见 [USB2 测试结果](usb2.md)。`och info` 的 61.44 MSPS 是射频采样率上限，USB2 吞吐参考见 README 和实测报告，且只与本次固件和通道 / 精度配置匹配。此修改未降低 SDK 的射频采样率范围，也未自动改变用户配置；换主机、USB 拓扑或固件后应重新测试。
+
+## TX FIR 插值 ×2 / ×4
+
+AD9361 驱动写入 TX FIR 系数时，会把 `0x002[1:0]` 临时设为目标插值；旧 SDK 的 `fir_verify_coeff`（`console_commands/sdr_fir.c`）却在写入后的当前模式下回读。TX FIR 关闭（旁路）时，×2 / ×4 滤波器的回读与写入不一致，SDK 判定失败并回滚，返回 `ERR fir_or_clock_apply code=-1 rollback=verified`。因此旧固件无法在关闭状态装载 TX 插值滤波器（含 `och fir tx load`），已开启的 ×2 / ×4 TX FIR 也无法关闭。
+
+修复后的 SDK 在回读 TX 系数时进入 ALERT 状态，把 `0x002[1:0]` 临时设为配置的插值，读完恢复原值；系数仍被逐个核对。修复版已实测：TX ×2 / ×4 在关闭状态装载、开启与关闭均成功，RX / TX 各种因子组合下的采样率就近选择与全双工吞吐测试通过。RX 抽取不受此问题影响。该修复只在板级 SDK 中，主机程序无需改动；固件版本字符串未变，请以能否装载 TX 插值滤波器来确认所用固件。

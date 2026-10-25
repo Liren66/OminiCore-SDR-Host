@@ -4,7 +4,7 @@ OmniCore Host 是 **OmniCoreSDR**（AD9361 + Zynq + CH32H417 USB 桥）的主机
 
 | 版本 | 平台 | 接口 | 许可证 |
 |---|---|---|---|
-| **0.4.3**（C ABI 1） | Windows 10/11 x64（libusbK）<br>Linux x86_64（libusb 1.0） | 纯 C ABI + 仅头文件 C++ RAII 包装 | MIT |
+| **0.4.4**（C ABI 1） | Windows 10/11 x64（libusbK）<br>Linux x86_64（libusb 1.0） | 纯 C ABI + 仅头文件 C++ RAII 包装 | MIT |
 
 ![OmniCore Host 架构](docs/images/architecture.svg)
 
@@ -29,6 +29,7 @@ OmniCore Host 是 **OmniCoreSDR**（AD9361 + Zynq + CH32H417 USB 桥）的主机
 | 数据完整性 | 16 KiB 起始头同步、RX 溢出后自动重同步，以 epoch 和元数据标记间断 |
 | USB IQ 格式 | 默认 12bit packed；2TX2RX 可选 8bit signed，降低带宽占用 |
 | FIR 与时钟 | AD9361 硬件 FIR 装载与启停、采样率与六级时钟链配置 |
+| 采样率就近 | BBPLL 小数分频无法精确实现的速率自动改用最近的整 Hz 速率并提示，如 11.2 MSPS → 11200011 Hz |
 | 运行中改参 | 不销毁流句柄，协调暂停 → 应用配置 → 恢复 |
 | 校正与参考 | RX 直流 / IQ 跟踪；ADF4002 内/外 10 MHz 参考；RX/TX 独立外部 LO |
 | 监控与板控 | PPS 频偏监控（±1 ppm LOCK）、RGB 状态灯、按温度调速的风扇 |
@@ -38,7 +39,7 @@ OmniCore Host 是 **OmniCoreSDR**（AD9361 + Zynq + CH32H417 USB 桥）的主机
 
 ### 1. 安装
 
-**Windows**：运行 `dist/OmniCoreHost-0.4.3-win64-setup.exe`，默认安装到 `C:\Program Files\OmniCore Host` 并加入 PATH。安装包含 `och.exe`、运行库、头文件、MinGW/MSVC 导入库、CMake 包配置、示例与文档，以及驱动助手：
+**Windows**：运行 `dist/OmniCoreHost-0.4.4-win64-setup.exe`，默认安装到 `C:\Program Files\OmniCore Host` 并加入 PATH。安装包含 `och.exe`、运行库、头文件、MinGW/MSVC 导入库、CMake 包配置、示例与文档，以及驱动助手：
 
 ```powershell
 och-driver check      # 只检查，不修改系统
@@ -50,8 +51,8 @@ och-driver install    # 为 VID 1A86 / PID 5537 安装 libusbK（需 UAC）
 ```bash
 sudo apt-get install build-essential cmake ninja-build pkg-config libusb-1.0-0-dev
 bash tools/build-linux.sh
-sudo cmake --install build/linux --prefix /opt/omnicore/0.4.3
-sudo ln -sfn /opt/omnicore/0.4.3/bin/och /usr/local/bin/och
+sudo cmake --install build/linux --prefix /opt/omnicore/0.4.4
+sudo ln -sfn /opt/omnicore/0.4.4/bin/och /usr/local/bin/och
 sudo install -m 0644 packaging/60-omnicore.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 ```
@@ -90,7 +91,7 @@ och bench --rx --tx --channels 1,2 --sample-rate 30.72M --seconds 10
 
 ### 设备固件要求
 
-安装包只含主机软件，不烧写任何板级固件。设备需 SDK 命令封装 v1 与 CH32 诊断协议 v4；扩展功能按 `och get system.info` 返回的能力字段启用（如 `rx_correction=1`、`external_lo=1`、`pps_monitor=1`），缺少时只拒绝对应功能。详见 [固件兼容性](docs/firmware-compatibility.md)。
+安装包只含主机软件，不烧写任何板级固件。设备需 SDK 命令封装 v1 与 CH32 诊断协议 v4；扩展功能按 `och get system.info` 返回的能力字段启用（如 `rx_correction=1`、`external_lo=1`、`pps_monitor=1`），缺少时只拒绝对应功能。TX FIR 插值 ×2 / ×4 需要包含 TX 系数回读修复的 SDK 固件，旧固件只能使用插值 1。详见 [固件兼容性](docs/firmware-compatibility.md)。
 
 ## 命令行
 
@@ -169,7 +170,7 @@ Linux 版提供与 Windows 相同的 `och` 命令行、C ABI 1 和 C++ 包装，
 | 依赖 | `build-essential cmake ninja-build pkg-config libusb-1.0-0-dev`；运行时只需 `libusb-1.0-0` |
 | USB 权限 | 安装 `packaging/60-omnicore.rules`（只匹配 `1a86:5537`）。桌面会话经 uaccess 授权；SSH 用户执行 `sudo usermod -aG plugdev "$USER"` 后重新登录，并重新插拔设备 |
 | 安装布局 | 推荐 `/opt/omnicore/<版本>`，再把 `bin/och` 软链接到 `/usr/local/bin`。程序使用相对 RPATH，无需 `LD_LIBRARY_PATH`；需保持 `bin/` 与 `lib/` 的相对位置 |
-| 发布归档 | 解压 `OmniCoreHost-0.4.3-linux-x86_64.tar.gz` 后整体复制到安装目录；udev 规则同时位于 `share/omnicore/60-omnicore.rules` |
+| 发布归档 | 解压 `OmniCoreHost-0.4.4-linux-x86_64.tar.gz` 后整体复制到安装目录；udev 规则同时位于 `share/omnicore/60-omnicore.rules` |
 | USB 队列 | 默认每方向 32 × 196608 B，在系统默认 `usbfs_memory_mb=16` 下即可满速。仅在增大 `--queue` / `--block` 后出现 `LIBUSB_ERROR_NO_MEM` 时才需调高该内核参数，程序不会自动修改 |
 | 主机缓冲 | `--buffer-mib` 调整用户态环形缓冲（默认 64 MiB），与内核 USB 队列预算无关 |
 | 构建参数 | `tools/build-linux.sh` 支持 `OCH_JOBS`（并发数）、`OCH_BUILD_DIR`、`OCH_INSTALL_DIR`；脚本优先使用 `/usr/bin` 下的工具，避免被其他 SDK 的旧版 CMake 覆盖 |
