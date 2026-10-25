@@ -1,18 +1,22 @@
-SPDX-License-Identifier: MIT OR GPL-3.0-or-later
+SPDX-License-Identifier: MIT AND GPL-3.0-or-later
 
 OmniCore Host
 Copyright (c) 2026 OmniCoreSDR contributors
 
-OmniCore Host is dual-licensed. You may use, modify and distribute it under
-the terms of either of the following licenses, at your option:
+OmniCore Host is licensed under BOTH of the following licenses. Anyone who
+uses, modifies or distributes it must comply with the terms of each of them:
 
-  * the MIT License, see LICENSE-MIT; or
+  * the MIT License, see LICENSE-MIT; and
   * the GNU General Public License, version 3 of the License or (at your
     option) any later version, see LICENSE-GPL-3.0.
 
+In particular, copies and derived works must keep the MIT copyright and
+permission notice and must also be distributed under the terms of the GNU
+General Public License (including making the corresponding source available).
+
 Unless you explicitly state otherwise, any contribution submitted for
-inclusion in this project is dual-licensed as above, without any additional
-terms or conditions.
+inclusion in this project is licensed under the same terms, without any
+additional terms or conditions.
 
 Third-party components retain their own licenses; see third_party/driver/NOTICES.txt
 and licenses/ in the binary distribution.

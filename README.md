@@ -4,7 +4,7 @@ OmniCore Host 是 **OmniCoreSDR**（AD9361 + Zynq + CH32H417 USB 桥）的主机
 
 | 版本 | 平台 | 接口 | 许可证 |
 |---|---|---|---|
-| **0.4.5**（C ABI 1） | Windows 10/11 x64（libusbK）<br>Linux x86_64（libusb 1.0） | 纯 C ABI + 仅头文件 C++ RAII 包装 | MIT 或 GPL-3.0-or-later |
+| **0.4.5**（C ABI 1） | Windows 10/11 x64（libusbK）<br>Linux x86_64（libusb 1.0） | 纯 C ABI + 仅头文件 C++ RAII 包装 | MIT 且 GPL-3.0-or-later |
 
 ![OmniCore Host 架构](docs/images/architecture.svg)
 
@@ -341,9 +341,9 @@ OmniCoreHost/
 
 ## 许可证
 
-本工程源码采用双许可证（`SPDX-License-Identifier: MIT OR GPL-3.0-or-later`），使用者可任选其一：
+本工程源码同时采用以下两个许可证（`SPDX-License-Identifier: MIT AND GPL-3.0-or-later`），使用、修改或分发时必须**同时遵守**：
 
 - [MIT 许可证](LICENSE-MIT)
 - [GNU 通用公共许可证 第 3 版](LICENSE-GPL-3.0)，或（由你选择）任何更新的版本
 
-说明见 [LICENSE](LICENSE)。除非另有声明，提交到本项目的贡献同样按上述双许可证授权。libusbK、libwdi 等第三方组件沿用各自许可证，见 `third_party/driver/NOTICES.txt`。
+即副本和衍生作品须保留 MIT 版权与许可声明，并按 GPL 条款分发（包括提供对应源代码）。说明见 [LICENSE](LICENSE)。除非另有声明，提交到本项目的贡献同样按上述条款授权。libusbK、libwdi 等第三方组件沿用各自许可证，见 `third_party/driver/NOTICES.txt`。
