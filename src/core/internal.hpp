@@ -60,6 +60,10 @@ struct och_device {
     void emit(uint32_t type,const std::string&,uint64_t epoch=0);
     void reset_transport();void configure(const och_config&);
     void apply_config(const och_config&);
+    // LO, manual gain and attenuation changes that keep IQ streams running.
+    void retune(const och_config&);
+    bool tune_lo(const och_config&,const och_config& before,bool full);
+    void tune_gain(const och_config&,const och_config& before,bool full,bool gain_table_changed);
     void reconfigure(const std::function<void()>&);
     och_fir_config get_fir(unsigned direction);
     void set_fir(const och_fir_config&);
@@ -84,6 +88,10 @@ struct och_device {
     och_fan_status get_fan_status();
     void set_fan_enabled(unsigned enabled);
     och_core_temperature get_core_temperature();
+    // system_info? from open; capabilities are fixed for a firmware image.
+    std::string capabilities;
+    // Cached LO selection: bit0 RX external, bit1 TX external; -1 unknown.
+    int lo_sources=-1;
     bool supports_capability(const char*);
     void require_capability(const char*);
     och_power_status get_power_status(uint32_t timeout_ms);
@@ -113,6 +121,8 @@ struct och_stream {
     std::atomic<uint64_t> started_ns{0},ended_ns{0};
     uint64_t epoch=0,epoch_base=0,index=0,dropped_pending=0,last_drop_notice=0;uint32_t flags_pending=0;
     bool reconfigured_rx=false;
+    // Set after a running-stream retune; the next RX block starts a new segment.
+    std::atomic<bool> retuned{false};
     // RX producer partial output block, always one epoch per block.
     size_t rx_filled=0;och_metadata rx_meta{};
     // TX consumer partial input block.

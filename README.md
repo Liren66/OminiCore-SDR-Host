@@ -286,7 +286,7 @@ rx.start();
 // rx.recv(...) 或 och::rx_lease 零拷贝读取；元数据中的 epoch / flags 标记数据间断
 ```
 
-运行中改参由同进程管理线程发起，流句柄保持不变，RX 以新 epoch 标记间断：
+运行中改参由同进程管理线程发起，流句柄保持不变，RX 以新 epoch 标记间断。只改频率、增益或衰减时不暂停流，单次切频约 11 ms（见 [快速调谐](docs/api.md#快速调谐046)）：
 
 ![运行中改参](docs/images/reconfigure.svg)
 

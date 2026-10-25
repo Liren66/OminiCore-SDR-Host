@@ -29,6 +29,7 @@ void och_stream::rx_data(const uint8_t* p,size_t n,uint64_t ep,bool begin) {
         if(reconfigured_rx){flags_pending|=OCH_META_RECONFIGURED|OCH_META_DISCONTINUITY;reconfigured_rx=false;}
         dev->emit(OCH_EVENT_RX_SYNC,"RX preamble complete; new epoch="+std::to_string(ep),ep);
     }
+    if(retuned.exchange(false)){publish_rx();flags_pending|=OCH_META_RECONFIGURED|OCH_META_DISCONTINUITY;}
     while(n) {
         auto b=ring.write();
         if(!b){

@@ -268,7 +268,12 @@ OCH_API int och_get_info(och_device*, och_device_info*);
  * the next epoch. Running TX discards old queued/in-flight data (delivery of
  * cancelled transfers is unknown), prefills four zero blocks counted in
  * tx_padding_samples, then resumes. OCH_EVENT_RECONFIGURED reports the gap.
- * recv/send may return TIMEOUT during this transaction; retry normally. */
+ * recv/send may return TIMEOUT during this transaction; retry normally.
+ * Since 0.4.6 a change limited to rx/tx_frequency, rx_gain and tx_attenuation
+ * keeps streams running (no queue drop, no zero prefill): the next RX block
+ * carries RECONFIGURED|DISCONTINUITY at an approximate boundary (USB queue
+ * latency) and samples near it may contain the PLL transient. A TX LO change
+ * while a TX stream exists still uses the stopping transaction above. */
 OCH_API int och_configure(och_device*, const och_config*);
 OCH_API int och_get_config(och_device*, och_config*); /* last successfully applied request on this handle; sample_rate is the applied rate */
 /* Raw SDK query or command, serialised with event reception. Mutations only while

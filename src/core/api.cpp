@@ -84,7 +84,7 @@ int och_command(och_device* d,const char* cmd,char* reply,size_t capacity,uint32
     std::lock_guard<std::mutex> lock(d->state_mutex);
     std::string text(cmd);bool query=!text.empty()&&text.back()=='?' && text.find('=')==std::string::npos;
     require(query||(!d->rx&&!d->tx),OCH_BUSY,"raw mutations require no streams; use device configure");
-    if(!query)d->configured=false; // A failed firmware command may have applied partially.
+    if(!query){d->configured=false;d->lo_sources=-1;} // A failed firmware command may have applied partially.
     auto result=d->command(text,timeout);copy_text(reply,capacity,result);
     require(result.size()<capacity,OCH_BUFFER_SMALL,"command reply buffer too small (reply truncated)");return OCH_OK;
 });}

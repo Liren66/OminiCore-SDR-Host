@@ -169,8 +169,9 @@ och_pps_status read_pps_status(och_device& d) {
 }
 }
 bool och_device::supports_capability(const char* key){
-    auto reply=command("system_info?");bool supported=false;
-    try{supported=field(reply,key)=="1";}catch(const Failure&){}
+    if(capabilities.empty())capabilities=command("system_info?");
+    bool supported=false;
+    try{supported=field(capabilities,key)=="1";}catch(const Failure&){}
     return supported;
 }
 void och_device::require_capability(const char* key){
@@ -189,18 +190,21 @@ void och_device::set_pps_enabled(unsigned enabled) {
     require(read_pps_status(*this).enabled==enabled,OCH_PROTOCOL,"PPS enable readback mismatch");
 }
 och_lo_source_config och_device::get_lo_source() {
-    require_capability("external_lo");return read_lo_source(*this);
+    require_capability("external_lo");
+    const auto c=read_lo_source(*this);lo_sources=int(c.rx_source)|int(c.tx_source)<<1;return c;
 }
 void och_device::set_lo_source(bool receive,unsigned source) {
     require(source<=1,OCH_INVALID,"LO source must be 0 (internal) or 1 (external)");
     const auto before=get_lo_source();
     if((receive?before.rx_source:before.tx_source)==source)return;
+    lo_sources=-1;
     require(!source||(receive?before.rx_frequency:before.tx_frequency)<=4000000000ULL,OCH_INVALID,
             "external LO supports nominal RF frequencies through 4 GHz; set the internal frequency first");
     reconfigure([&] {
         const bool was=configured;configured=false;transport_dirty=true;
         command(std::string(receive?"rx_lo_source=":"tx_lo_source=")+std::to_string(source),15000);
         const auto after=read_lo_source(*this);
+        lo_sources=int(after.rx_source)|int(after.tx_source)<<1;
         require((receive?after.rx_source:after.tx_source)==source&&
                 (receive?after.tx_source:after.rx_source)==(receive?before.tx_source:before.rx_source)&&
                 (receive?after.tx_frequency:after.rx_frequency)==(receive?before.tx_frequency:before.rx_frequency),

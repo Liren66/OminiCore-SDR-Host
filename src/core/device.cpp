@@ -60,6 +60,7 @@ void och_device::open(const DeviceInfo& d) {
     auto s=command("system_info?");
     require(s.find("header_on=rx_start_and_overflow_recovery")!=std::string::npos,OCH_UNSUPPORTED,"SDK RX recovery header support required");
     copy_text(info.firmware,sizeof info.firmware,value(s,"firmware"));
+    capabilities=s;
     command("usb_stop!");rx_on=tx_on=false;
     och_default_config(&config);
     reset_transport();
