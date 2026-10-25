@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Single consumer, blocking receives. Output is deliberately not written to a slow console.
 #include <omnicore/och.hpp>
 #include <cstdint>

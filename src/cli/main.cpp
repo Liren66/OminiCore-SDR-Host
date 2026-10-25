@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include <omnicore/och.hpp>
 #include "options.hpp"
 #include "fir_file.hpp"

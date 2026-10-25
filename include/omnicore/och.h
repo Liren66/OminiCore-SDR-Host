@@ -1,4 +1,4 @@
-/* OmniCore Host public ABI 1. SPDX-License-Identifier: MIT */
+/* OmniCore Host public ABI 1. SPDX-License-Identifier: GPL-3.0-or-later */
 #ifndef OMNICORE_OCH_H
 #define OMNICORE_OCH_H
 #include <stddef.h>

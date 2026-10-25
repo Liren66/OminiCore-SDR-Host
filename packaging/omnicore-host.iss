@@ -48,8 +48,6 @@ Source: "{#StageDir}\examples\*"; DestDir: "{app}\examples"; Flags: ignoreversio
 Source: "{#StageDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#StageDir}\LICENSE-MIT"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#StageDir}\LICENSE-GPL-3.0"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\PAYLOAD_SHA256.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // RX only: one consumer and one management thread (main). No implicit TX.
 // Requires OmniCoreHost 0.3+. Existing firmware/FIR constraints still apply.
 #include <omnicore/och.hpp>

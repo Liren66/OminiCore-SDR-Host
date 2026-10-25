@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Explicitly sends a 1MHz complex tone on TX1 for about one second.
 #include <omnicore/och.hpp>
 #include <algorithm>

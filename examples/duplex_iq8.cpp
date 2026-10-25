@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Explicit 2TX2RX signed8 demonstration: RX samples plus zero-IQ TX for one second.
 #include <omnicore/och.hpp>
 #include <atomic>

@@ -15,7 +15,7 @@ if(!$InnoCompiler){$InnoCompiler=Join-Path $project 'tools\installer\inno-6.2.2\
 if(-not (Test-Path -LiteralPath $InnoCompiler -PathType Leaf)){throw 'Inno Setup compiler not found'}
 # CMake install merges into an existing directory. Refuse stale SDK/test/debug
 # payloads instead of silently including them in Inno's recursive file entry.
-$allowedRoots=@('bin','docs','examples','include','lib','licenses','README.md','LICENSE','LICENSE-MIT','LICENSE-GPL-3.0','PAYLOAD_SHA256.txt')
+$allowedRoots=@('bin','docs','examples','include','lib','licenses','README.md','LICENSE','PAYLOAD_SHA256.txt')
 foreach($item in Get-ChildItem -LiteralPath $stage -Force){
     if($item.Name -notin $allowedRoots){throw "Unexpected stage entry '$($item.Name)'. Recreate a clean stage using CMake install."}
 }
