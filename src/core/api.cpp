@@ -67,7 +67,11 @@ int och_open(const char* serial,och_device** out){return protect([&]{
     require(out!=nullptr,OCH_INVALID,"null device output");*out=nullptr;
     auto all=och::transport::scanDevices(0x1a86,0x5537);std::vector<och::transport::DeviceInfo> match;
     for(auto& d:all)if(!serial||!*serial||serial_of(d)==serial)match.push_back(d);
+#ifdef _WIN32
     require(!match.empty(),OCH_NOT_FOUND,"OmniCoreSDR with libusbK not found; run och-driver check");
+#else
+    require(!match.empty(),OCH_NOT_FOUND,"OmniCoreSDR USB device not found (VID 1a86, PID 5537)");
+#endif
     require(match.size()==1,OCH_INVALID,"multiple devices; specify a serial number");
     auto d=std::make_unique<och_device>();d->open(match.front());*out=d.release();return OCH_OK;
 });}

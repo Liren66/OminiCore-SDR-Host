@@ -9,7 +9,7 @@ och_stream::och_stream(och_device* d,const och_stream_args& a):dev(d),args(a),
     stop_event(CreateEventW(nullptr,TRUE,FALSE,nullptr)) {
     require(stop_event.h!=nullptr,OCH_IO,"stream stop event allocation failed");
     slots.reserve(args.usb_queue_depth);
-    for(unsigned i=0;i<args.usb_queue_depth;++i)slots.push_back(std::make_unique<Slot>(args.transfer_bytes));
+    for(unsigned i=0;i<args.usb_queue_depth;++i)slots.push_back(std::make_unique<Slot>(dev->usb,args.transfer_bytes));
 }
 och_stream::~och_stream(){stop_requested=true;SetEvent(stop_event.h);ring.wake();if(worker.joinable())worker.join();}
 void och_stream::fail(const std::string& s){{std::lock_guard<std::mutex> lock(failure_mutex);failure=s;}++errors;dev->emit(OCH_EVENT_TRANSPORT,s);}
@@ -74,7 +74,14 @@ void och_stream::cancel_all() {
     auto& u=dev->usb;UCHAR ep=args.direction==OCH_RX?0x81:0x01;
     if(!active.empty()) {
         u.api.abort(u.h,ep);
-        while(!active.empty()){auto* s=active.front();active.pop_front();if(args.direction==OCH_TX)cancelled_bytes+=s->used;CancelIoEx(u.file,&s->ov);ULONG n=0;u.api.result(u.h,&s->ov,&n,TRUE);s->pending=false;}
+        while(!active.empty()){
+            auto* s=active.front();active.pop_front();
+            if(args.direction==OCH_TX)cancelled_bytes+=s->used;
+#ifdef _WIN32
+            CancelIoEx(u.file,&s->ov);
+#endif
+            ULONG n=0;u.api.result(u.h,&s->ov,&n,TRUE);s->pending=false;
+        }
         active.clear();pending=0;
     }
     UCHAR off=FALSE;u.api.setPolicy(u.h,ep,RAW_IO,sizeof off,&off);
@@ -83,7 +90,9 @@ void och_stream::run() {
     auto& u=dev->usb;UCHAR ep=args.direction==OCH_RX?0x81:0x01;
     och::core::FixedQueue<Slot*,128> free;for(auto& s:slots)free.push_back(s.get());bool starved_notice=false;
     try {
+#ifdef _WIN32
         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_ABOVE_NORMAL);
+#endif
         require(args.transfer_bytes<=u.maximum(ep),OCH_INVALID,"USB transfer block exceeds driver maximum");
         u.timeout(ep,0);u.policy(ep,RAW_IO,FALSE);
         if(args.direction==OCH_RX){u.policy(ep,IGNORE_SHORT_PACKETS,FALSE);u.policy(ep,ALLOW_PARTIAL_READS,TRUE);u.policy(ep,AUTO_FLUSH,FALSE);}
@@ -104,7 +113,9 @@ void och_stream::run() {
             if(w==WAIT_OBJECT_0)break;
             if(w==WAIT_TIMEOUT)continue;
             require(w==WAIT_OBJECT_0+1,OCH_IO,"USB event wait failed");
-            ULONG n=0;require(u.api.result(u.h,&s->ov,&n,FALSE)!=FALSE,OCH_IO,"USB transfer failed: "+utf8(syserr(GetLastError())));
+            ULONG n=0;
+            const auto completed=u.api.result(u.h,&s->ov,&n,FALSE);
+            require(completed!=FALSE,OCH_IO,"USB transfer failed: "+utf8(syserr(GetLastError())));
             require(n<=s->used,OCH_IO,"driver reported invalid USB completion length");
             if(args.direction==OCH_TX)require(n==s->used,OCH_IO,"short TX completion; byte order cannot be retried safely");
             active.pop_front();s->pending=false;pending=active.size();usb_bytes+=n;

@@ -42,7 +42,7 @@ SDK 溢出事件可能早于或晚于数据到达。以数据通路确认的 epo
 
 RX 的 RECONFIGURED、START、DISCONTINUITY 标志意味着新数据段，下游需要重置解调/滤波状态。重配期间的已知主机丢弃会进入 host_dropped_samples；这不是 DEVICE_OVERFLOW。TX 的旧队列和取消请求不会重放，活动 TX 重启会填入 4 个 USB 传输块的零 IQ，见 tx_padding_samples。接收端可能观察到中断或零信号，不能把它解释为连续相位或无损切频。
 
-若硬件改参或恢复失败，核心停止双方并使配置缓存失效。先保存 och_last_error，再结束 IO 线程、销毁流；确认必要的 rf.reinit 已成功后显式 configure 并重建流。不要只在旧流上循环 start，也不要假定已经恢复旧 TX。成功时 OCH_EVENT_RECONFIGURED 记录恢复、丢弃和主机耗时，失败时 OCH_EVENT_TRANSPORT 记录停止状态。实机恢复已在 [验证记录](runtime-reconfiguration-validation.md) 中列出条件和全部时延范围；其中有 873.281 ms 的带宽变更和 1057.325 ms 的 TX FIR 复写调用，不能把常见值视为延迟上限。
+若硬件改参或恢复失败，核心停止双方并使配置缓存失效。先保存 och_last_error，再结束 IO 线程、销毁流；确认必要的 rf.reinit 已成功后显式 configure 并重建流。不要只在旧流上循环 start，也不要假定已经恢复旧 TX。成功时 OCH_EVENT_RECONFIGURED 记录恢复、丢弃和主机耗时，失败时 OCH_EVENT_TRANSPORT 记录停止状态。实机测量中带宽变更最长约 873 ms、TX FIR 复写约 1057 ms，不能把常见值视为延迟上限。
 
 持续 TX 的生产者应在重配 TIMEOUT 后继续 send。核心会在新配置和 4 块零 IQ 预填完成后提前放行生产者，再先恢复 RX、最后启动 TX。若上层一直等待 configure 返回才恢复供样，启动阶段仍可能耗尽预填；零 IQ 块不能代替持续生产者。
 

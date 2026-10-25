@@ -18,7 +18,7 @@ int64_t integer(const std::string& s) {
     require(p.ec==std::errc()&&p.ptr==s.data()+s.size(),OCH_PROTOCOL,"invalid integer in SDK reply");return v;
 }
 uint32_t u32(const std::string& s) {auto v=integer(s);require(v>=0&&v<=UINT32_MAX,OCH_PROTOCOL,"SDK integer out of range");return static_cast<uint32_t>(v);}
-uint32_t token() {static std::atomic<uint32_t> n{GetTickCount()};auto v=++n;if(!v)v=++n;return v;}
+uint32_t token() {static std::atomic<uint32_t> n{static_cast<uint32_t>(now_ns()/1000000)};auto v=++n;if(!v)v=++n;return v;}
 uint32_t crc(const int16_t* p,unsigned n) {
     uint32_t c=0xffffffffU;
     for(unsigned i=0;i<n;++i)for(unsigned byte=0;byte<2;++byte){c^=(static_cast<uint16_t>(p[i])>>(8*byte))&255U;

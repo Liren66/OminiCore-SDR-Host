@@ -2,7 +2,7 @@
 #include <omnicore/och.h>
 #include "ring.hpp"
 #include "power_status.hpp"
-#include "../transport/libusbk.hpp"
+#include "../transport/transport.hpp"
 #include "../dsp/codec.hpp"
 #include "../dsp/framer.hpp"
 #include <condition_variable>
@@ -88,8 +88,8 @@ struct och_device {
 struct och_stream {
     struct Slot {
         OVERLAPPED ov{};och::transport::Handle event;
-        std::unique_ptr<uint8_t[]> bytes;size_t used=0;bool pending=false;
-        explicit Slot(size_t n):event(CreateEventW(nullptr,TRUE,FALSE,nullptr)),bytes(std::make_unique<uint8_t[]>(n)){
+        och::transport::TransferBuffer bytes;size_t used=0;bool pending=false;
+        Slot(och::transport::Usb& usb,size_t n):event(CreateEventW(nullptr,TRUE,FALSE,nullptr)),bytes(usb,n){
             och::core::require(event.h!=nullptr,OCH_IO,"cannot create USB event");ov.hEvent=event.h;memset(bytes.get(),0,n);
         }
     };

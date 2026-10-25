@@ -83,10 +83,4 @@ C ABI：`och_set_pps_enabled(device, 0|1)`，`och_get_pps_status(device, &status
 
 新比特流包含修订号 2 的 PPS 接收 IP。PPS 中断连接 concat In0 → IRQ_F2P[0] → GIC 61，SDK 显式采用此板级映射；当前 BSP 自动生成的 `XPAR_FABRIC_AXI_AD9361_GPS_PPS_IRQ_INTR=91` 与实线不一致，91 留给现有 CH32 中断。驱动共享已有 GIC，使用上升沿触发，同时解除 RX/TX 两侧 PPS 屏蔽。没有修改 CH32H417 工程。
 
-2026-10-24 验证：SDK ARM 编译通过；PPS 驱动桩测试 203 项检查通过，覆盖有效脉冲、无输入、断线、异常间隔、计数溢出、重新启用及变更时钟；主机回归 66/66 通过。实机无输入测试、开启状态跨 RF 重初始化保持、RX 租借期间开关、连续接收中切换、30.72/61.44 MSPS 名义频率更新通过。运行中切换测试接收 76,212,906 个采样，未出现 `RECONFIGURED` 标志；这不代表任何场景绝对不丢样。
-
-接入真实外部 10 MHz 和 PPS 后，D5 持续常亮，45 秒观测中获得 46 个有效测量，频偏由约 −3.426107 ppm 收敛，稳定后频率为 122880000–122880001 Hz、频偏为 0–0.008138 ppm。该结果相对于输入 PPS，不是独立仪表绝对精度验收。日志位于工作区 `_reference_pps_live_20261024`。JTAG 加载是临时运行，未写 Flash。
-
-0.3.4 增加 5 项主机回归，共 71/71 通过，覆盖正负阈值边界、无效/超时隐藏、PPS 不影响外参考设置、RX 租借与双向流保持、CLI 显示一致性。实板 15/15 项显示检查通过：关闭 PPS 后参考/系统/旧命令视图均隐藏 LOCK，外部 10 MHz 保持开启；重新开启后等待新测量，再显示 `locked=1 lock_source=PPS`。测试结束保留外部 10 MHz 和 PPS 监控开启。测试源码与日志位于 `_pps_lock_validation_20261024`。
-
-测试源码与日志在工作区 `_pps_validation_20261024`。计数功能背景可参阅 [ADI AXI AD9361 文档](https://analogdevicesinc.github.io/hdl/2023_R2/library/axi_ad9361/index.html)，具体计数修正和中断映射以本项目 RTL/连线为准。
+接入真实外部 10 MHz 和 PPS 后，D5 常亮；30.72 MSPS 下稳定读数为 122880000–122880001 Hz、频偏 0–0.008 ppm。该结果相对于输入 PPS，不是独立仪表的绝对精度验收。计数功能背景可参阅 [ADI AXI AD9361 文档](https://analogdevicesinc.github.io/hdl/2023_R2/library/axi_ad9361/index.html)，具体计数修正和中断映射以本项目 RTL/连线为准。

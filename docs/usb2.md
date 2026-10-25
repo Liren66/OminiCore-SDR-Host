@@ -40,18 +40,6 @@ USB2 与 USB3 的 `och info` 使用相同的设备信息布局。采样率表放
 
 终端图由 CLI 自身的显示代码根据测量记录绘制，省略的段落以 `...` 标出。
 
-## 通过记录
-
-- [1 RX · 12bit · 14 MSPS · 300 秒](data/usb2/long300/rx1-14000000-300s.json)
-- [2 RX · 12bit · 7 MSPS · 300 秒](data/usb2/grid300/rx2-7000000-300s.json)
-- [1 TX · 12bit · 14 MSPS · 300 秒](data/usb2/long300/tx1-14000000-300s.json)
-- [2 TX · 12bit · 6.5 MSPS · 300 秒](data/usb2/grid300/tx2-6500000-300s.json)
-- [1 RX + 1 TX · 12bit · 7 MSPS · 300 秒](data/usb2/grid300/duplex1-7000000-300s.json)
-- [2 RX + 2 TX · 12bit · 3.5 MSPS · 300 秒](data/usb2/grid300/duplex2-3500000-300s.json)
-- [2 RX + 2 TX · 8bit · 5 MSPS · 300 秒](data/usb2/fast300/duplex8-5000000-300s.json)
-
-[机器可读汇总](data/usb2/selected.json)保留各行证据与 SHA256；[环境记录](data/usb2/environment.json)给出主机配置。本文仅展示通过记录。
-
 ## 复现
 
 ```powershell

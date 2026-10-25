@@ -1,0 +1,2 @@
+# OmniCore SDR: local desktop ACL plus plugdev access for SSH sessions.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="1a86", ATTR{idProduct}=="5537", MODE="0660", GROUP="plugdev", TAG+="uaccess"

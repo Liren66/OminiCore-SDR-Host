@@ -31,6 +31,9 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#elif defined(__linux__) && !defined(OCH_CLI_TEST)
+#include <unistd.h>
+#include <sys/ioctl.h>
 #endif
 
 using namespace och_cli;
@@ -71,6 +74,12 @@ public:
         CONSOLE_SCREEN_BUFFER_INFO info{};
         if (enabled_ && GetConsoleScreenBufferInfo(GetStdHandle(STD_ERROR_HANDLE), &info))
             columns_ = static_cast<size_t>(std::max(20, int(info.srWindow.Right - info.srWindow.Left)));
+#elif defined(__linux__) && !defined(OCH_CLI_TEST)
+        const char* term=std::getenv("TERM");
+        enabled_=!json_mode && isatty(STDOUT_FILENO) && isatty(STDERR_FILENO) && term && std::strcmp(term,"dumb")!=0;
+        winsize size{};
+        if(enabled_ && ioctl(STDERR_FILENO,TIOCGWINSZ,&size)==0 && size.ws_col)
+            columns_=std::max<size_t>(20,size.ws_col-1);
 #else
         (void)json_mode;
 #endif
@@ -91,8 +100,8 @@ public:
     }
     ~terminal_progress() { clear(); }
 };
-// Colour and Unicode rules only for an interactive Windows console that accepts
-// VT sequences. Redirected output stays plain ASCII.
+// Colour and Unicode require an interactive VT terminal. Redirected output
+// stays plain ASCII on both platforms.
 presentation::style terminal_style(bool stdout_handle, bool no_color) {
     presentation::style st;
 #if defined(_WIN32) && !defined(OCH_CLI_TEST)
@@ -103,6 +112,12 @@ presentation::style terminal_style(bool stdout_handle, bool no_color) {
         SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     st.unicode = vt;
     st.color = vt && !no_color;
+#elif defined(__linux__) && !defined(OCH_CLI_TEST)
+    const char* term=std::getenv("TERM");
+    const bool vt=isatty(stdout_handle?STDOUT_FILENO:STDERR_FILENO) && term && std::strcmp(term,"dumb")!=0;
+    const char* locale=std::setlocale(LC_CTYPE,nullptr);
+    st.unicode=vt && locale && (std::strstr(locale,"UTF-8") || std::strstr(locale,"utf8"));
+    st.color=vt && !no_color && !std::getenv("NO_COLOR");
 #else
     (void)stdout_handle; (void)no_color;
 #endif
@@ -779,7 +794,11 @@ int execute(const options& opt) {
             presentation::section("OmniCore Host", std::cout);
             presentation::field("Version", och_version(), std::cout, presentation::tone::accent);
             presentation::field("Public C/C++ ABI", OCH_ABI_VERSION, std::cout);
+#ifdef _WIN32
             presentation::field("Platform", "Windows x64, libusbK", std::cout);
+#else
+            presentation::field("Platform", "Linux, libusb-1.0", std::cout);
+#endif
             presentation::field("Purpose", "OmniCoreSDR control and IQ streaming", std::cout);
             std::cout << '\n';
             presentation::note("Next: och find  |  och info  |  och help", std::cout);
@@ -968,6 +987,9 @@ int main(int argc, char** argv) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
     std::setlocale(LC_NUMERIC, "C");
+#if defined(__linux__) && !defined(OCH_CLI_TEST)
+    std::setlocale(LC_CTYPE, "");
+#endif
     std::signal(SIGINT, signal_handler); std::signal(SIGTERM, signal_handler);
     bool json_mode = false, no_color = false;
     for (int i = 1; i < argc; ++i) {

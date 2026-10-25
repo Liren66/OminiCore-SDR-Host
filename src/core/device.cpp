@@ -28,10 +28,19 @@ std::string och::core::serial_of(const DeviceInfo& d){auto s=d.instance;auto i=s
 void och::core::fill_info(och_device_info& info,const DeviceInfo& d) {
     info={};info.struct_size=sizeof(info);info.abi_version=OCH_ABI_VERSION;
     copy_text(info.serial,sizeof info.serial,serial_of(d));copy_text(info.name,sizeof info.name,"OmniCoreSDR");
-    copy_text(info.driver,sizeof info.driver,"libusbK");info.rx_channels=info.tx_channels=2;info.max_sample_rate=61440000;
+#ifdef _WIN32
+    copy_text(info.driver,sizeof info.driver,"libusbK");
+#else
+    copy_text(info.driver,sizeof info.driver,"libusb-1.0");
+#endif
+    info.rx_channels=info.tx_channels=2;info.max_sample_rate=61440000;
 }
 och_device::~och_device() {
-    control_stop=true;if(control_thread.joinable())control_thread.join();
+    control_stop=true;
+#ifndef _WIN32
+    usb.stop_control();
+#endif
+    if(control_thread.joinable())control_thread.join();
 }
 void och_device::open(const DeviceInfo& d) {
     fill_info(info,d);
@@ -92,13 +101,22 @@ void och_device::control_loop() {
     try {
         std::array<uint8_t,4096> bytes{};
         while(!control_stop) {
-            auto n=transfer(usb,0x82,bytes.data(),static_cast<ULONG>(bytes.size()),50);
+            // Linux uses one persistent request. Repeated usbfs timeout/cancel
+            // cycles can stall xHCI service to the high-rate IQ endpoints.
+            // stop_control cancels it and blocks a racing resubmission at close.
+#ifdef _WIN32
+            constexpr ULONG read_timeout=50;
+#else
+            constexpr ULONG read_timeout=0;
+#endif
+            auto n=transfer(usb,0x82,bytes.data(),static_cast<ULONG>(bytes.size()),read_timeout);
             for(ULONG i=0;i<n;++i){char c=static_cast<char>(bytes[i]);if(c=='\r')continue;
                 if(c=='\n'){if(!partial.empty())line(partial);partial.clear();}
                 else {if(partial.size()>=32768)throw Failure(OCH_PROTOCOL,"unterminated control line");partial+=c;}
             }
         }
     }catch(const std::exception& e){
+        if(control_stop)return;
         {std::lock_guard<std::mutex> lock(reply_mutex);control_failed=true;control_error=e.what();}reply_cv.notify_all();
         emit(OCH_EVENT_TRANSPORT,std::string("control disconnected: ")+e.what());
     }
@@ -136,6 +154,14 @@ void och_device::reset_transport() {
     require(done>=8 && words[0]==1396983601U && words[1]==4,OCH_UNSUPPORTED,"CH32 transport reset protocol v4 required; firmware was not changed");
     setup.Value=2;
     require(usb.api.control(usb.h,setup,reinterpret_cast<UCHAR*>(words),sizeof words,&done,nullptr)!=FALSE,OCH_IO,"CH32 stream cleanup failed");
+#ifndef _WIN32
+    // Synchronize endpoint halt/sequence state after firmware cleanup and
+    // cancellation before submitting another stream through usbfs/xHCI.
+    for(unsigned char ep:{0x01,0x81}) {
+        const int rc=libusb_clear_halt(usb.device,ep);
+        require(rc==0,OCH_IO,std::string("EP1 reset failed: ")+libusb_error_name(rc));
+    }
+#endif
     usb.policy(0x81,RAW_IO,FALSE);usb.policy(0x81,ALLOW_PARTIAL_READS,TRUE);
     std::vector<uint8_t> junk(16384);size_t drained=0;
     for(unsigned i=0;i<128;++i){auto n=transfer(usb,0x81,junk.data(),16384,10);if(!n){transport_dirty=false;return;}drained+=n;}

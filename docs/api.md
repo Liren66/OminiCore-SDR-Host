@@ -56,7 +56,7 @@ RX 重配时丢弃旧队列，已知的本地主机丢样计入 host_dropped_sam
 
 TX 重配时丢弃旧排队数据并取消旧 USB 请求，避免把旧配置下的样本重放到新配置。原本正在 TX 的方向恢复前自动预填 4 个 transfer_bytes 大小的零 IQ 块，样本数计入 tx_padding_samples；新配置与零块提交后，先放行原生产者继续 send，在硬件启动过程中补充队列，再先恢复 RX、最后启动 TX。生产者应在 TIMEOUT 后继续重试，不必等待管理线程的配置调用返回；若恢复失败，核心重新阻止 TX 数据操作并停止双方。尚未启动或已经停止的 TX 不会因此启动。此前 send 接受的样本不保证已从 DAC 发出，也可能在重配中丢弃。
 
-OCH_EVENT_RECONFIGURED（新增值 6）报告成功重配的恢复方向、间断/丢弃及主机测得的耗时，失败通过 OCH_EVENT_TRANSPORT 报告。事件是控制操作的观察记录，IQ 边界以 RX 元数据为准。单通道 RX、零 IQ TX 和双向模式已完成实机改参恢复测试，时延范围、计数与条件见 [验证记录](runtime-reconfiguration-validation.md)。其中耗时属于主机 API 和观察时间，不是硬件采样间断，也没有固定的毫秒级延迟保证。
+OCH_EVENT_RECONFIGURED（新增值 6）报告成功重配的恢复方向、间断/丢弃及主机测得的耗时，失败通过 OCH_EVENT_TRANSPORT 报告。事件是控制操作的观察记录，IQ 边界以 RX 元数据为准。单通道 RX、零 IQ TX 和双向模式已完成实机改参恢复测试。其中耗时属于主机 API 和观察时间，不是硬件采样间断，也没有固定的毫秒级延迟保证。
 
 硬件变更或恢复失败时，双方流停止，设备配置缓存失效，不自动回滚并重新发射。应用应保留错误详情，停止并等待 IO 线程退出，销毁旧流，在确认设备状态后显式 configure 并重新创建/启动流；若 SDK 报告 rollback=failed / applied=unknown，需按 FIR 说明先完成 rf.reinit。参数校验失败或租借导致的 BUSY 不属于已执行硬件事务失败。
 
