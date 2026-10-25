@@ -184,6 +184,11 @@ OCH_API int och_set_fir(och_device*, const och_fir_config*);
 OCH_API int och_set_fir_enabled(och_device*, uint32_t rx_enabled, uint32_t tx_enabled);
 OCH_API int och_get_clock(och_device*, och_clock_config*);
 OCH_API int och_set_clock(och_device*, const och_clock_config*);
+/* Sample rate (also och_configure): if the SDK has no exact clock plan for
+ * the rate, e.g. 11.2 MSPS needs a BBPLL its fractional-N cannot hit exactly,
+ * the nearest accepted rate on a 15.625 kHz grid is applied instead. Read
+ * the applied rate with och_get_config or och_get_clock. Rates outside the
+ * clock/FIR limits still fail. */
 OCH_API int och_set_sample_rate(och_device*, uint32_t sample_rate_hz);
 /* Requires SDK system_info rx_correction=1. get reads both current enables.
  * Setters preserve the other correction and verify readback. Unsupported
@@ -265,7 +270,7 @@ OCH_API int och_get_info(och_device*, och_device_info*);
  * tx_padding_samples, then resumes. OCH_EVENT_RECONFIGURED reports the gap.
  * recv/send may return TIMEOUT during this transaction; retry normally. */
 OCH_API int och_configure(och_device*, const och_config*);
-OCH_API int och_get_config(och_device*, och_config*); /* last successfully applied request on this handle */
+OCH_API int och_get_config(och_device*, och_config*); /* last successfully applied request on this handle; sample_rate is the applied rate */
 /* Raw SDK query or command, serialised with event reception. Mutations only while
  * no stream exists; configure again afterwards. Reply is UTF-8, nul terminated. */
 OCH_API int och_command(och_device*, const char* command, char* reply, size_t capacity, uint32_t timeout_ms);

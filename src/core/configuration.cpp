@@ -46,8 +46,11 @@ void set_iq_bits(och_device& d,unsigned bits) {
 }
 }
 
-void och_device::configure(const och_config& c) {
-    validate(c);
+void och_device::configure(const och_config& requested) {
+    validate(requested);
+    // A rate already mapped to its nearest accepted clock plan is unchanged.
+    och_config c=requested;
+    if(configured && c.sample_rate==requested_sample_rate)c.sample_rate=config.sample_rate;
     // Existing buffers have a fixed sample layout. Even equal-width input
     // switches are explicit stream recreation, not a hidden layout change.
     require(!(rx||tx) || (c.rx_mask==config.rx_mask && c.tx_mask==config.tx_mask && iq_bits(c)==iq_bits(config)),
@@ -89,9 +92,10 @@ void och_device::apply_config(const och_config& c) {
             require(wire_control,OCH_UNSUPPORTED,"SDK iq_format=1 is required");
             set_iq_bits(*this,8);
         }
+        uint32_t applied_rate=c.sample_rate;
         if(full || c.sample_rate!=before.sample_rate) {
-            const auto capabilities=command("system_info?");
-            command((capabilities.find("clock_config=1")!=std::string::npos?"clock_sample_rate=":"rx_samp_freq=")+std::to_string(c.sample_rate),15000);
+            if(command("system_info?").find("clock_config=1")!=std::string::npos)applied_rate=apply_sample_rate(c.sample_rate);
+            else {command("rx_samp_freq="+std::to_string(c.sample_rate),15000);requested_sample_rate=c.sample_rate;}
         }
         const bool rx_tuned=full || c.rx_frequency!=before.rx_frequency;
         if(rx_tuned)command("rx_lo_freq="+fixed(c.rx_frequency/1e6));
@@ -109,10 +113,10 @@ void och_device::apply_config(const och_config& c) {
         }
         if(full || c.sample_rate!=before.sample_rate) {
             const auto clocks=get_clock();
-            require(clocks.rx_hz[5]==c.sample_rate && clocks.tx_hz[5]==c.sample_rate,OCH_PROTOCOL,"requested shared sample rate was not applied");
+            require(clocks.rx_hz[5]==applied_rate && clocks.tx_hz[5]==applied_rate,OCH_PROTOCOL,"requested shared sample rate was not applied");
         }
         if(!reconfiguring_control)command("usb_clear!");
-        config=c;configured=true;
+        config=c;config.sample_rate=applied_rate;configured=true;
     }catch(...) {
         transport_dirty=true;
         if(!reconfiguring_control)try{command("usb_stop!");rx_on=tx_on=false;}catch(...){}

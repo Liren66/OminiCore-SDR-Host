@@ -81,7 +81,7 @@ och fir rx load full_profile.ftr --coefficients-only --json
 
 ## 时钟命令
 
-clock status 回读 reference_hz 和两组六级时钟。clock sample-rate 30.72M 让 SDK 计算合法共享链，明确拒绝非法组合，不静默退回其他采样率。set rx.sample-rate、set tx.sample-rate、set clock.sample-rate 也使用同一安全计算入口。
+clock status 回读 reference_hz 和两组六级时钟。clock sample-rate 30.72M 让 SDK 计算合法共享链，明确拒绝超出时钟或 FIR 范围的组合。若只是小数分频无法精确命中（如 11.2 MSPS），会改用 15.625 kHz 网格上最近的可用速率（11.203125 MSPS），并以 `WARN`（JSON 模式为 stderr 的 `sample_rate_adjusted`）给出请求值与实际值。set rx.sample-rate、set tx.sample-rate、set clock.sample-rate、config 和流命令的 `--sample-rate` 也使用同一入口。
 
 需要精确指定链时：
 

@@ -104,7 +104,7 @@ JSON 保持旧字段，新增内容如下：
 | och fir rx load filter.ftr | 装载 RX FIR，成功后 RX FIR 保持关闭 |
 | och fir both on | 一次事务开启 RX/TX FIR |
 | och clock status | 查询实际参考钟和两个方向的六级时钟链 |
-| och clock sample-rate 30.72M | 计算并应用共享采样率，成功后回读 |
+| och clock sample-rate 30.72M | 计算并应用共享采样率，成功后回读；无精确时钟方案时改用最近可用速率并提示 `WARN` |
 | och selftest | 停止通路并执行设备 RX/TX 数字自检 |
 | och help | 查看命令及参数 |
 | och version --json | 查询软件及 ABI 版本 |

@@ -107,11 +107,13 @@ timeout_ms=0 只返回当前 device 句柄内的缓存；1..2000 允许在没有
 | och_set_fir_enabled | set_fir_enabled(rx,tx) | 在同一事务内设置两边启停 |
 | och_get_clock | clock() | 实际参考钟与两组六级时钟回读 |
 | och_set_clock | set_clock(config) | 检查并设置完整 RX/TX 链 |
-| och_set_sample_rate | set_sample_rate(hz) | SDK 安全计算并应用共享采样率 |
+| och_set_sample_rate | set_sample_rate(hz) | SDK 安全计算并应用共享采样率；无精确时钟方案时改用最近可用速率 |
 
 FIR 配置先清零、填 struct_size、direction、channel_mask=3、factor、tap_count、gain_db、coefficients，再选择 enabled。CLI 的 load 默认 enabled=0；直接 C/C++ API 可明确填写启用状态。verified 和 crc32 为读取结果，设置时由核心计算 CRC 并验证。tap 数为 16 的倍数且最多 128，signed16 系数，RX gain 为 -12/-6/0/6 dB、TX gain 为 -6/0 dB、factor 为 1/2/4；TX factor 1 最多 64 taps，硬件时钟预算还可能降低上限。同方向两个通道使用同一组系数。
 
 clock 的 rx_hz 是 BBPLL/ADC/R2/R1/RF/Fs，tx_hz 是 BBPLL/DAC/T2/T1/TF/Fs，单位均 Hz。reference_hz 读取固定 40 MHz 板级参考钟，写入 0 表示保持。0.3.2 的 `och_set_reference_source` 可通过 ADF4002 启用外部 10 MHz 驯服，但 AD9361 输入仍为 40 MHz，不能通过 `och_set_clock` 改这个值。RX/TX 的 BBPLL 和 Fs 必须一致。合法分频和 FIR 约束由 SDK 验证，不接受隐式降低采样率来满足限制。
+
+**最近可用采样率**：BBPLL 为小数分频（40 MHz 参考，模数 2088960），SDK 要求回读与请求逐 Hz 一致，因此部分速率会因分频舍入被拒绝，例如 11.2 MSPS 需要 716.8 MHz 的 BBPLL。`och_set_sample_rate` 与 `och_configure` 遇到这种拒绝（`ERR fir_or_clock_apply`）时，会按距离由近到远、两侧交替尝试 15.625 kHz 整数倍的速率（最多 6 次）；这些速率的 BBPLL 可被精确表示。成功后实际速率写入 `och_get_config` 的 `sample_rate`，11.2 MSPS 会变为 11.203125 MSPS。同一句柄再次请求原速率时直接沿用，不重复尝试。超出时钟或 FIR 范围的速率（如未启用 FIR 抽取时的 1 MSPS）仍按原错误失败。`och_set_clock` 指定的完整时钟链不做替换。
 
 0.3 起，typed FIR/clock 写操作使用上述协调重配置流程，可在已有流时调用；所有管理操作仍应串行执行。硬件写入失败后双方停止，销毁旧流，在必要的 rf.reinit 成功后重新 configure 并创建流；不要把失败前缓存当成已知实际状态。成功的 FIR 修改保留当前 Fs；正常 configure 保留已装载的 FIR。换 Fs 后要重新确认频响。原始命令 och_command 的修改仍要求无流对象，且会使配置缓存失效。
 

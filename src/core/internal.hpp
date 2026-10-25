@@ -66,6 +66,10 @@ struct och_device {
     void enable_fir(unsigned rx_enabled,unsigned tx_enabled);
     och_clock_config get_clock();
     void set_clock(const och_clock_config&);void set_sample_rate(uint32_t rate);
+    // Applies rate or, if the SDK has no exact clock plan for it, the nearest
+    // accepted rate; returns the applied rate.
+    uint32_t apply_sample_rate(uint32_t rate);
+    uint32_t requested_sample_rate=0; // last request mapped to config.sample_rate
     och_rx_correction_config get_rx_correction();
     void set_rx_correction(bool dc,unsigned enabled);
     och_lo_source_config get_lo_source();

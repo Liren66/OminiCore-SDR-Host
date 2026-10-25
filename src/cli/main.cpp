@@ -61,6 +61,17 @@ std::string display_number(double value, unsigned precision = 2) {
     out << std::fixed << std::setprecision(precision) << value;
     return out.str();
 }
+// The core substitutes the nearest accepted rate when the SDK has no exact
+// clock plan for the request; say so instead of silently changing the rate.
+void report_rate_adjustment(uint32_t requested, uint32_t applied, bool json_mode) {
+    if (requested == applied) return;
+    if (json_mode)
+        std::cerr << "{\"type\":\"warning\",\"code\":\"sample_rate_adjusted\",\"requested_hz\":" << requested
+                  << ",\"applied_hz\":" << applied << "}\n";
+    else
+        presentation::status(presentation::level::warn, "No exact clock plan for " + display_number(requested / 1e6, 6) +
+            " MSPS; using nearest supported " + display_number(applied / 1e6, 6) + " MSPS.", std::cout);
+}
 // Progress is a terminal convenience, never part of redirected or JSON output.
 class terminal_progress {
     bool enabled_ = false;
@@ -391,6 +402,11 @@ int run_stream(const options& opt) {
     }
     och::device device(opt.get("serial"));
     device.configure(config);
+    const uint32_t requested_rate = config.sample_rate;
+    config.sample_rate = device.config().sample_rate;
+    // The test tone is synthesized for the rate actually applied.
+    if (do_tx && source && !opt.has("file") && config.sample_rate != requested_rate)
+        source = std::make_unique<tx_source>(opt, config, format, args.transfer_bytes);
     if (!opt.has("json")) {
         const std::string mode = do_rx && do_tx ? "RX + TX" : do_rx ? "RX" : "TX";
         presentation::title(opt.command, bench ? "throughput benchmark, " + mode :
@@ -413,11 +429,13 @@ int run_stream(const options& opt) {
         presentation::field("USB requests", std::to_string(args.usb_queue_depth) + " x " + std::to_string(args.transfer_bytes) + " bytes", std::cout);
         presentation::end_group(std::cout);
         presentation::config(config, std::cout);
+        report_rate_adjustment(requested_rate, config.sample_rate, false);
         std::cout << '\n';
         presentation::status(presentation::level::prep, "Allocating buffers and preparing streams.", std::cout);
         std::cout << std::flush;
     }
     if (opt.has("json")) {
+        report_rate_adjustment(requested_rate, config.sample_rate, true);
         const auto* ref = usb2_reference::find(device.info(), config);
         if (ref && config.sample_rate > ref->rate_hz)
             std::cerr << "{\"type\":\"warning\",\"code\":\"usb2_reference_exceeded\",\"reference_rate_hz\":"
@@ -778,6 +796,7 @@ int run_clock(const options& opt) {
     auto actual = d.clock();
     if (opt.has("json")) std::cout << clock_json(actual) << '\n';
     else presentation::clocks(actual, std::cout);
+    if (rate) report_rate_adjustment(sample_rate, actual.rx_hz[5], opt.has("json"));
     return 0;
 }
 int execute(const options& opt) {
@@ -858,6 +877,7 @@ int execute(const options& opt) {
                 presentation::config(applied, std::cout);
                 presentation::status(presentation::level::ok, "Configuration applied; TX was not started.", std::cout);
             }
+            report_rate_adjustment(c.sample_rate, applied.sample_rate, json_mode);
         }
         else {
             const auto raw_reply = d.command("system_status?");
@@ -902,6 +922,7 @@ int execute(const options& opt) {
         const bool long_control = action || opt.command == "set";
         och::device d(opt.get("serial"));
         std::string raw_reply;
+        uint32_t requested_rate = 0, applied_rate = 0;
         if(canonical=="rgb.enabled" || canonical=="rgb.status") {
             if(opt.command=="set")d.set_rgb_enabled(cmd.back()=='1');
             const auto status=d.rgb_status();
@@ -950,6 +971,13 @@ int execute(const options& opt) {
                 if(!healthy(after)||after.source!=before.source||after.led_mode!=before.source)
                     throw std::runtime_error("ADF4002 self-test did not restore a healthy reference source");
             }
+        }else if(opt.command=="set" && (canonical=="rx.sample-rate"||canonical=="tx.sample-rate"||canonical=="clock.sample-rate")) {
+            // Typed setter: applies the nearest accepted rate if the SDK has
+            // no exact clock plan. translate has already range-checked it.
+            requested_rate=static_cast<uint32_t>(std::stoul(cmd.substr(cmd.find('=')+1)));
+            d.set_sample_rate(requested_rate);
+            applied_rate=d.clock().rx_hz[5];
+            raw_reply="clock_sample_rate="+std::to_string(applied_rate)+"\n";
         }else raw_reply=d.command(cmd,long_control?15000:5000);
         const auto view = monitor_reply(d,cmd,raw_reply);
         auto reply = canonical.empty() ? view : commands::canonical_reply(canonical, view);
@@ -958,6 +986,7 @@ int execute(const options& opt) {
                       << ",\"reply\":" << json(reply) << ",\"raw_reply\":" << json(raw_reply) << "}\n";
         else if (json_mode) std::cout << "{\"command\":" << json(cmd) << ",\"reply\":" << json(reply) << "}\n";
         else presentation::reply(canonical.empty() ? cmd : canonical, reply, std::cout);
+        report_rate_adjustment(requested_rate, applied_rate, json_mode);
         return 0;
     }
     throw std::invalid_argument("unknown command: " + opt.command + "; use och help");

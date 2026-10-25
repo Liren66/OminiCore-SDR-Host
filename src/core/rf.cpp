@@ -1,4 +1,5 @@
 #include "internal.hpp"
+#include <algorithm>
 #include <charconv>
 #include <sstream>
 using namespace och::core;
@@ -301,15 +302,47 @@ void och_device::set_clock(const och_clock_config& c) {
     try {
         command("clock_begin="+id);command("clock_rx="+id+","+csv(c.rx_hz));command("clock_tx="+id+","+csv(c.tx_hz));command("clock_commit="+id,15000);
         auto after=get_clock();require(std::equal(c.rx_hz,c.rx_hz+6,after.rx_hz)&&std::equal(c.tx_hz,c.tx_hz+6,after.tx_hz),OCH_PROTOCOL,"clock chain readback mismatch");
-        config.sample_rate=after.rx_hz[5];configured=was;
+        config.sample_rate=requested_sample_rate=after.rx_hz[5];configured=was;
     }catch(...){auto error=std::current_exception();try{command("clock_abort="+id);}catch(...){}std::rethrow_exception(error);}
 }
 void och_device::set_sample_rate(uint32_t rate) {
     require(rate>0&&rate<=61440000,OCH_INVALID,"sample rate must be 1..61440000 Hz");
-    if(configured && config.sample_rate==rate)return;
+    if(configured && (config.sample_rate==rate||requested_sample_rate==rate))return;
     if(!reconfiguring_control)require_capability("clock_config");
     if((rx||tx) && !reconfiguring_control){reconfigure([&]{set_sample_rate(rate);});return;}
     bool was=configured;configured=false;transport_dirty=true;
-    command("clock_sample_rate="+std::to_string(rate),15000);auto actual=get_clock();
-    require(actual.rx_hz[5]==rate&&actual.tx_hz[5]==rate,OCH_PROTOCOL,"sample rate readback mismatch");config.sample_rate=rate;configured=was;
+    config.sample_rate=apply_sample_rate(rate);configured=was;
+}
+// The SDK programs the fractional-N BBPLL (40 MHz reference, modulus
+// 2088960) and rejects the plan when the readback differs from the request,
+// e.g. 11.2 MSPS needs BBPLL 716.8 MHz. A BBPLL that is a multiple of
+// 15.625 kHz is exact, and every clock plan has BBPLL = Fs x integer, so rates
+// on that grid are representable. When a rate is rejected, try the nearest
+// grid rates, alternating sides, and return the one the device accepts.
+uint32_t och_device::apply_sample_rate(uint32_t rate) {
+    constexpr uint32_t step=15625,max_rate=61440000,max_attempts=6;
+    const auto attempt=[&](uint32_t hz){
+        command("clock_sample_rate="+std::to_string(hz),15000);auto actual=get_clock();
+        require(actual.rx_hz[5]==hz&&actual.tx_hz[5]==hz,OCH_PROTOCOL,"sample rate readback mismatch");
+    };
+    const auto clock_rejected=[](const Failure& f){return f.code==OCH_PROTOCOL&&std::string(f.what()).find("fir_or_clock_apply")!=std::string::npos;};
+    try{attempt(rate);requested_sample_rate=rate;return rate;}
+    catch(const Failure& original) {
+        if(!clock_rejected(original))throw;
+        std::vector<uint32_t> candidates;
+        const uint32_t below=rate/step*step;
+        for(uint32_t i=0;i<max_attempts;++i) {
+            if(below>step*i)candidates.push_back(below-step*i);
+            if(uint64_t(below)+step*(i+1)<=max_rate)candidates.push_back(below+step*(i+1));
+        }
+        candidates.erase(std::remove(candidates.begin(),candidates.end(),rate),candidates.end());
+        std::stable_sort(candidates.begin(),candidates.end(),[rate](uint32_t a,uint32_t b){
+            return (a>rate?a-rate:rate-a)<(b>rate?b-rate:rate-b);});
+        if(candidates.size()>max_attempts)candidates.resize(max_attempts);
+        for(auto hz:candidates) {
+            try{attempt(hz);requested_sample_rate=rate;return hz;}
+            catch(const Failure& f){if(!clock_rejected(f))throw;}
+        }
+        throw;
+    }
 }
