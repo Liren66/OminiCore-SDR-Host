@@ -19,6 +19,8 @@ inline const std::vector<help_group>& help_groups() {
             {"find", "List connected OmniCoreSDR devices"},
             {"info", "Identity, firmware, USB link, power snapshot"},
             {"power [status]", "USB-C power from the startup log"},
+            {"rssi on|off", "Switch RX RSSI reporting (off after power-up)"},
+            {"rssi [--count N] [--interval 0.5]", "RX1/RX2 RSSI, relative dB; --count 0 = until Ctrl+C"},
             {"version", "Host software version and C ABI"}}},
         {"Control", {
             {"commands", "List the canonical control catalog"},

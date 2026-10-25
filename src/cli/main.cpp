@@ -854,6 +854,61 @@ int execute(const options& opt) {
         if (json_mode) std::cout << '\n';
         return 0;
     }
+    if (opt.command == "rssi") {
+        // och rssi on|off switches reporting (off after power-up); otherwise read.
+        const bool toggle = opt.positional.size() == 1 && (opt.positional[0] == "on" || opt.positional[0] == "off");
+        if (!opt.positional.empty() && !toggle) throw std::invalid_argument("use och rssi, och rssi on or och rssi off");
+        allowed(opt, toggle ? std::set<std::string>{} : std::set<std::string>{"count", "interval"}, toggle);
+        const auto count = integer(opt.get("count", "1"), 100000000);
+        const double interval = number(opt.get("interval", "0.5"));
+        if (!(interval >= 0.01 && interval <= 3600)) throw std::invalid_argument("--interval must be 0.01..3600 seconds");
+        och::device d(opt.get("serial"));
+        if (toggle) {
+            d.set_rx_rssi_enabled(opt.positional[0] == "on");
+            const bool on = d.rx_rssi().enabled != 0;
+            if (json_mode) std::cout << "{\"rssi_enabled\":" << (on ? "true" : "false") << "}\n";
+            else presentation::status(presentation::level::ok, on ? "RSSI reporting on." : "RSSI reporting off.", std::cout);
+            return 0;
+        }
+        const auto began = std::chrono::steady_clock::now();
+        for (uint64_t n = 0; (!count || n < count) && !interrupted; ++n) {
+            if (n) {
+                const auto due = began + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(interval * static_cast<double>(n)));
+                while (!interrupted && std::chrono::steady_clock::now() < due)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (interrupted) break;
+            }
+            const auto r = d.rx_rssi();
+            const auto t = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+            if (!r.enabled) {
+                if (json_mode) std::cout << "{\"type\":\"rx_rssi\",\"enabled\":false,\"rx1_db\":null,\"rx2_db\":null}\n";
+                else {
+                    presentation::status(presentation::level::warn, "RSSI reporting is off (default after power-up).", std::cout);
+                    presentation::note("Enable it with: och rssi on", std::cout);
+                }
+                return 1;
+            }
+            auto db = [&](unsigned i) {
+                std::ostringstream s; s.imbue(std::locale::classic());
+                if (r.valid[i]) s << std::fixed << std::setprecision(2) << r.rssi_db[i]; else s << (json_mode ? "null" : "--");
+                return s.str();
+            };
+            if (json_mode) {
+                std::cout << "{\"type\":\"rx_rssi\",\"enabled\":true,\"t_s\":" << std::fixed << std::setprecision(3) << t
+                          << ",\"usb_rx_mask\":" << r.usb_rx_mask << ",\"rx1_db\":" << db(0) << ",\"rx2_db\":" << db(1)
+                          << ",\"unit\":\"dB_relative\",\"calibrated\":false}\n" << std::flush;
+            } else if (count == 1) {
+                presentation::section("RX RSSI (relative dB, not calibrated power)", std::cout);
+                presentation::field_text("RX1", r.valid[0] ? db(0) + " dB" : "not receiving", std::cout);
+                presentation::field_text("RX2", r.valid[1] ? db(1) + " dB" : "not receiving", std::cout);
+            } else {
+                std::cout << std::fixed << std::setprecision(2) << std::setw(8) << t << " s  RX1 " << std::setw(8) << db(0)
+                          << " dB  RX2 " << std::setw(8) << db(1) << " dB\n" << std::flush;
+            }
+        }
+        return interrupted ? 130 : 0;
+    }
     if (opt.command == "power") {
         allowed(opt, {}, true);
         if (!opt.positional.empty() && (opt.positional.size() != 1 || opt.positional[0] != "status"))
@@ -934,6 +989,11 @@ int execute(const options& opt) {
             const auto status=d.fan_status();
             raw_reply=canonical=="fan.status"?board_view::fan(status):
                 "fan_enable="+std::to_string(status.enabled)+" mode="+(status.enabled?"auto\n":"off\n");
+        }else if(canonical=="rx.rssi") {
+            raw_reply=board_view::rssi(d.rx_rssi());
+        }else if(canonical=="rx.rssi-enabled") {
+            if(opt.command=="set")d.set_rx_rssi_enabled(cmd.back()=='1');
+            raw_reply="rssi_enable="+std::to_string(d.rx_rssi().enabled)+"\n";
         }else if(canonical=="core.temperature") {
             raw_reply=board_view::temperature(d.core_temperature());
         }else if(canonical=="pps.input-enabled" || canonical=="pps.status") {

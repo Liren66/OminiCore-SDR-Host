@@ -106,6 +106,10 @@ public:
     och_core_temperature core_temperature() const {
         och_core_temperature c{}; c.struct_size=sizeof(c); check(och_get_core_temperature(handle_,&c)); return c;
     }
+    och_rx_rssi rx_rssi() const {
+        och_rx_rssi c{}; c.struct_size=sizeof(c); check(och_get_rx_rssi(handle_,&c)); return c;
+    }
+    void set_rx_rssi_enabled(bool enabled) { check(och_set_rx_rssi_enabled(handle_,enabled?1u:0u)); }
     void set_rgb_enabled(bool enabled) { check(och_set_rgb_enabled(handle_,enabled?1u:0u)); }
     void set_fan_enabled(bool enabled) { check(och_set_fan_enabled(handle_,enabled?1u:0u)); }
     std::string command(const std::string& command, uint32_t timeout_ms = 5000) {

@@ -213,6 +213,19 @@ och bench --rx --tx --sample-rate 61.44M --rx-channels 1 --tx-channels 2 --secon
 
 默认情况下 EVT/间断不自动使流停止；`bench --fail-fast` 例外如上。业务是否通过应根据间断、欠流、重同步和队列损失统计判断，不能只看退出码。
 
+## RX RSSI
+
+RSSI 上报**默认关闭**，断电后也恢复为关闭，需要先运行 `och rssi on` 开启（`och rssi off` 关闭，或使用 `och set rx.rssi-enabled on|off`）。未开启时，`och rssi` 会提示并以退出码 1 结束。`och rssi` 读取 RX1 和 RX2 的 symbol RSSI。单位为相对 dB，数值越大越强，**不是校准过的输入功率**。ENSM 不在接收状态时显示 `--`，JSON 中为 `null`。本板运行 2R2T，USB 只上传一个通道时，两路仍都能读到 RSSI。`--count N` 指定读取次数（0 表示一直读，直到 Ctrl+C），`--interval 0.5` 指定读取间隔（秒）。`och get rx.rssi` 只读取一次，与其他查询命令格式相同。
+
+```powershell
+och rssi on
+och rssi
+och rssi --count 0 --interval 0.2
+och rssi --count 10 --json
+```
+
+新 SDK 的 `rx_rssi?` 实测每次约 1.1 ms。旧 SDK 由 OCH 从 `system_status?` 中解析，每次约 190 ms。见 [固件兼容性](firmware-compatibility.md#rx-rssi-与控制串口波特率)。
+
 ## RGB 与风扇温控
 
 `rgb.enabled` / `rgb.status`、`fan.enabled` / `fan.status` 和 `core.temperature` 分别控制和查询 RGB 状态灯、风扇温控与 Zynq 核心温度。需要包含 BOARD_CTRL_AXI 的 FPGA 和对应 SDK，能力字段为 `board_rgb=1 fan_control=1 core_temp=1`。SDK 默认 RGB 开启、亮度 15%，风扇温控关闭；同时兼容旧版 25% 亮度固件，亮度以设备回报为准。这些操作不改变 C ABI 结构，也不停止 IQ 流。详见 [板级控制及接口](board-control.md)。

@@ -193,6 +193,10 @@ och_command 是 SDK 原始控制入口，修改型命令只允许没有流对象
 - device_overflows、device_underflows、event_drops 属于该设备对象的观察期；RX/TX stats 会看到相同设备计数，不要把两份相加。设备错误字段按收到的相关 EVT 通知计数，可能受固件通知合并影响，不能当作精确物理 FIFO 错误次数或丢样量。
 - 最大采样率 61.44 MSPS 是单通道的射频能力，不表示 USB 可同时承载四通道都满速。四通道 61.44 MSPS 总 wire 需求 737.28 MB/s；应按共享 USB 带宽选定双向速率，常用四通道测试使用 30.72 MSPS。
 
+## RX RSSI（0.4.7）
+
+`och_get_rx_rssi(device, &rssi)` 返回 `och_rx_rssi`，包含 `enabled`、`usb_rx_mask`、`valid[2]` 和 `rssi_db[2]`；`och_set_rx_rssi_enabled(device, 0|1)` 用于开关。C++ 接口为 `device.rx_rssi()` 和 `device.set_rx_rssi_enabled(bool)`。RSSI 上报在 SDK 冷启动后默认关闭，此时 `enabled=0`，两路都无效。数值是 AD9361 symbol RSSI，单位为相对 dB，越大越强，不是校准过的输入功率。ENSM 不在 RX/FDD 状态时 `valid=0`、`rssi_db=0`；`usb_rx_mask` 只表示 USB 上传掩码，2R2T 下两路接收机都在测量。这是纯查询，可以在 RX/TX 流运行时调用，不会暂停流，实测双通道 30.72 MSPS 接收时无间断。新 SDK（`rssi=1`）使用 `rx_rssi?`；旧 SDK 从 `system_status?` 中解析，同样可用，但较慢。
+
 ## 0.3.5 板级 RGB 与风扇温控
 
 新增 RGB 开关/状态、风扇温控开关/状态和 Zynq 核心温度查询。使用新 FPGA BOARD_CTRL_AXI 及新版 SDK，能力标志为 `board_rgb=1 fan_control=1 core_temp=1`。当前 SDK 默认 RGB 开启、亮度 15%，风扇温控关闭；OCH 0.3.6 同时兼容旧版 25% 固件，亮度以设备回报为准；不改变已有 C ABI 结构或停止 IQ 流。详见 [板级控制及接口](board-control.md)。

@@ -36,6 +36,19 @@ inline std::string fan(const och_fan_status& status)
         << status.duty_permille / 10.0 << '\n';
     return out.str();
 }
+inline std::string rssi(const och_rx_rssi& status)
+{
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << "rx_rssi enabled=" << status.enabled << " usb_rx_mask=" << status.usb_rx_mask;
+    for (unsigned i = 0; i < 2; ++i) {
+        out << " rx" << i + 1 << "_db=";
+        if (status.valid[i]) out << std::fixed << std::setprecision(2) << status.rssi_db[i];
+        else out << "unknown";
+    }
+    out << " unit=dB_relative calibrated=0\n";
+    return out.str();
+}
 inline std::string temperature(const och_core_temperature& status)
 {
     std::ostringstream out;

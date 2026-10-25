@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 #define OCH_ABI_VERSION 1u
-#define OCH_VERSION "0.4.6"
+#define OCH_VERSION "0.4.7"
 #define OCH_PPS_LOCK_TOLERANCE_PPM 1
 typedef struct och_device och_device;
 typedef struct och_stream och_stream;
@@ -255,6 +255,22 @@ OCH_API int och_get_fan_status(och_device*, och_fan_status*);
 OCH_API int och_set_fan_enabled(och_device*, uint32_t enabled);
 OCH_API int och_get_core_temperature(och_device*, och_core_temperature*);
 
+/* RX symbol RSSI (0.4.7). Relative dB from the AD9361 RSSI word, higher is
+ * stronger; NOT calibrated input power (gain table and front end apply).
+ * Reporting is off after SDK cold boot (enabled=0, both invalid) until
+ * och_set_rx_rssi_enabled(1). valid=0 also while the ENSM is not receiving;
+ * rssi_db is then 0. usb_rx_mask is the USB upload mask only: both receivers
+ * measure in 2R2T. Query/switch only: active streams continue. Older SDKs
+ * without rssi=1 have no switch (enabled=1, set returns UNSUPPORTED) and are
+ * read from the RSSI lines of system_status?. */
+typedef struct och_rx_rssi {
+    uint32_t struct_size, enabled, usb_rx_mask, valid[2];
+    double rssi_db[2];
+    uint32_t reserved[4];
+} och_rx_rssi;
+OCH_API int och_get_rx_rssi(och_device*, och_rx_rssi*);
+OCH_API int och_set_rx_rssi_enabled(och_device*, uint32_t enabled);
+
 OCH_API const char* och_version(void);
 OCH_API const char* och_last_error(void); /* thread-local; valid until next failing call */
 OCH_API void och_default_config(och_config*);
@@ -269,7 +285,7 @@ OCH_API int och_get_info(och_device*, och_device_info*);
  * cancelled transfers is unknown), prefills four zero blocks counted in
  * tx_padding_samples, then resumes. OCH_EVENT_RECONFIGURED reports the gap.
  * recv/send may return TIMEOUT during this transaction; retry normally.
- * Since 0.4.6 a change limited to rx/tx_frequency, rx_gain and tx_attenuation
+ * Since 0.4.7 a change limited to rx/tx_frequency, rx_gain and tx_attenuation
  * keeps streams running (no queue drop, no zero prefill): the next RX block
  * carries RECONFIGURED|DISCONTINUITY at an approximate boundary (USB queue
  * latency) and samples near it may contain the PLL transient. A TX LO change

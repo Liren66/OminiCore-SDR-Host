@@ -17,6 +17,10 @@ int64_t integer(const std::string& s) {
     int64_t v=0;auto p=std::from_chars(s.data(),s.data()+s.size(),v);
     require(p.ec==std::errc()&&p.ptr==s.data()+s.size(),OCH_PROTOCOL,"invalid integer in SDK reply");return v;
 }
+double real(const std::string& s) {
+    std::istringstream in(s);in.imbue(std::locale::classic());double v=0;char extra=0;
+    require(static_cast<bool>(in>>v)&&!(in>>extra)&&std::isfinite(v),OCH_PROTOCOL,"invalid number in SDK reply");return v;
+}
 uint32_t u32(const std::string& s) {auto v=integer(s);require(v>=0&&v<=UINT32_MAX,OCH_PROTOCOL,"SDK integer out of range");return static_cast<uint32_t>(v);}
 uint32_t token() {static std::atomic<uint32_t> n{static_cast<uint32_t>(now_ns()/1000000)};auto v=++n;if(!v)v=++n;return v;}
 uint32_t crc(const int16_t* p,unsigned n) {
@@ -188,6 +192,42 @@ void och_device::set_pps_enabled(unsigned enabled) {
     // or invalidate RF configuration, even if monitoring itself fails.
     command("pps_input_en="+std::to_string(enabled));
     require(read_pps_status(*this).enabled==enabled,OCH_PROTOCOL,"PPS enable readback mismatch");
+}
+och_rx_rssi och_device::get_rx_rssi() {
+    och_rx_rssi c{};c.struct_size=sizeof c;
+    if(supports_capability("rssi")) {
+        const auto text=command("rx_rssi?");
+        // The first rssi=1 test build had no switch and always reported.
+        c.enabled=text.find(" enabled=")==std::string::npos?1:u32(field(text,"enabled"));
+        c.usb_rx_mask=u32(field(text,"rx_channel"));
+        for(unsigned i=0;i<2;++i) {
+            const auto name="rx"+std::to_string(i+1);
+            c.valid[i]=u32(field(text,name+"_valid"));c.rssi_db[i]=real(field(text,name+"_db"));
+        }
+    }else {
+        // Older SDKs report the same symbol RSSI only inside system_status?.
+        const auto text=command("system_status?");
+        c.enabled=1;c.usb_rx_mask=u32(field(text,"rx_channel"));
+        std::istringstream lines(text);std::string line;
+        while(std::getline(lines,line))if(line.rfind("rssi ",0)==0) {
+            const auto rx=u32(field(line,"rx"));
+            require(rx==1||rx==2,OCH_PROTOCOL,"SDK RSSI channel out of range");
+            c.valid[rx-1]=u32(field(line,"valid"));c.rssi_db[rx-1]=real(field(line,"value"));
+        }
+    }
+    require(c.enabled<=1&&c.usb_rx_mask<=3,OCH_PROTOCOL,"SDK RSSI state out of range");
+    for(unsigned i=0;i<2;++i) {
+        require(c.valid[i]<=1&&(c.enabled||!c.valid[i]),OCH_PROTOCOL,"SDK RSSI valid flag is inconsistent");
+        if(!c.valid[i])c.rssi_db[i]=0;
+        require(c.rssi_db[i]>=-130&&c.rssi_db[i]<=0,OCH_PROTOCOL,"SDK RSSI out of range");
+    }
+    return c;
+}
+void och_device::set_rx_rssi_enabled(unsigned enabled) {
+    require(enabled<=1,OCH_INVALID,"RSSI enabled must be 0 or 1");
+    require_capability("rssi");
+    const auto reply=command("rssi_enable="+std::to_string(enabled));
+    require(u32(field(reply,"rssi_enable"))==enabled,OCH_PROTOCOL,"SDK RSSI enable readback mismatch");
 }
 och_lo_source_config och_device::get_lo_source() {
     require_capability("external_lo");

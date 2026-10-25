@@ -56,3 +56,41 @@ USB2 连续传输已单独上板测量，配置、持续时间和通过记录见
 AD9361 驱动写入 TX FIR 系数时，会把 `0x002[1:0]` 临时设为目标插值；旧 SDK 的 `fir_verify_coeff`（`console_commands/sdr_fir.c`）却在写入后的当前模式下回读。TX FIR 关闭（旁路）时，×2 / ×4 滤波器的回读与写入不一致，SDK 判定失败并回滚，返回 `ERR fir_or_clock_apply code=-1 rollback=verified`。因此旧固件无法在关闭状态装载 TX 插值滤波器（含 `och fir tx load`），已开启的 ×2 / ×4 TX FIR 也无法关闭。
 
 修复后的 SDK 在回读 TX 系数时进入 ALERT 状态，把 `0x002[1:0]` 临时设为配置的插值，读完恢复原值；系数仍被逐个核对。修复版已实测：TX ×2 / ×4 在关闭状态装载、开启与关闭均成功，RX / TX 各种因子组合下的采样率就近选择与全双工吞吐测试通过。RX 抽取不受此问题影响。该修复只在板级 SDK 中，主机程序无需改动；固件版本字符串未变，请以能否装载 TX 插值滤波器来确认所用固件。
+
+## RX RSSI 与控制串口波特率
+
+**RSSI。** 新版 SDK 增加 `rssi_enable? / =` 和 `rx_rssi?`，`system_info?` 中新增一行 `rf_capabilities rssi=1 console_baud=<波特率>`。
+
+- **默认关闭。** 冷启动后为 `rssi_enable=0`，此时 `rx_rssi?` 报告 `enabled=0`，两路都无效。需要手动开启：`och rssi on`（或 `och set rx.rssi-enabled on`）。重新初始化 RF 不改变这个开关，断电后恢复为关闭。
+- **数值含义。** 读取 AD9361 symbol RSSI，单位为相对 dB，越大越强，**不是校准过的输入功率**。
+- **有效条件。** RSSI 已开启，并且 ENSM 处于 RX 或 FDD 状态。`rx_channel` 只决定哪些通道通过 USB 上传；本板运行 2R2T，两路接收机始终在测量，所以 RX2 不上传时也能读到 RSSI。
+
+```
+rx_rssi enabled=1 rx1_valid=1 rx1_db=-73.250 rx2_valid=1 rx2_db=-75.000 rx_channel=1 ensm=3 unit=dB_AD9361_relative calibrated_input_power=0
+```
+
+OCH 0.4.7 提供 `och_get_rx_rssi` / `och_set_rx_rssi_enabled`、`och rssi [on|off]` 和 `och get rx.rssi`。旧 SDK 没有 `rssi=1`，因此没有开关：OCH 从 `system_status?` 的 RSSI 行读取，`enabled` 视为 1，开关命令返回不支持。查询和开关都不会暂停 IQ 流。
+
+**波特率。** Zynq PL 的 UART16550（SDK `console.h` 中的 `CONSOLE_BAUD_RATE`）与 CH32 USART1（UHSIF 工程 `Common/usbss_uart1_bridge.h` 中的 `UART1_BRIDGE_BAUD`）之间的控制链路，从 115200 提高到 **3.125 MBd**。两边必须相同，并且必须同时更新：一边新、一边旧时，`och find` 仍能看到设备，但 `och info` 会因 `host_protocol?` 超时而失败。
+
+| 一侧 | 时钟 | 波特率公式 | 上限 |
+|---|---|---|---|
+| Zynq AXI UART16550 | 100 MHz（`XPAR_AXI_UART16550_0_CLOCK_FREQ_HZ`） | 100 MHz / (16 × 整数除数) | 6.25 MBd |
+| CH32H417 USART1 | HCLK 100 MHz（SYSCLK 400 MHz / 4） | HCLK / (16 × USARTDIV)，USARTDIV 带 4 位小数 | 6.25 MBd（手册标称 9 Mbps 需要更高的 HCLK） |
+
+由于 16550 只支持整数除数，两边都能精确实现的速率只有 6.25 MBd / N：6.25M、3.125M、2.083M、1.5625M……SDK 用编译期检查保证这一点。选 3.125 MBd（N=2）而不是 6.25 MBd，是因为 Zynq 控制台轮询接收，16 字节 FIFO 在 3.125 MBd 下约 51 µs 填满，在 6.25 MBd 下只需约 26 µs；而再翻倍每条命令只能多省约 0.1 ms。如果 FIFO 溢出，SDK 会回复 `Error: UART receive overflow`，不会悄悄丢掉命令。CH32 的 8 KiB 接收环形缓冲在 3.125 MBd 下必须每约 26 ms 处理一次，主循环满足这个要求。
+
+实测（USB3，RX 双通道 30.72 MSPS 流运行中）：
+
+| 项目 | 115200 | 3.125 MBd |
+|---|---|---|
+| 命令往返（`rx_lo_freq?`） | 7.2 ms | 0.6 ms |
+| `system_info?`（916 B） | 81 ms | 3.4 ms |
+| `rx_rssi?` | — | 1.1 ms |
+| `rx_lo_freq=`（同频段） | 11.2 ms | 3.8 ms |
+| `och_configure` 流运行中切频 | 11.3 ms | 4.0 ms |
+| 跨增益表切频 | 32.7 ms | 25.4 ms（主要是 SPI 写增益表） |
+
+满速双通道：RX 2 通道 61.44 MSPS（12bit，368.6 MB/s）运行 60 秒，开启 RSSI 并每 10 ms 读取一次，共 3,538 次，全部有效，平均 1.26 ms、最长 3.15 ms；吞吐 61.44 MS/s/通道，无间断、无设备或主机溢出、无丢样，与不读 RSSI 时完全一致。
+
+压力测试：连续 4,530 条命令（包括 9.7 KB 的 `help?` 回复），没有出错，也没有 UART 溢出；长回复约 0.3 MB/s，即线路速率上限；期间 RX 保持 30.72 MS/s。

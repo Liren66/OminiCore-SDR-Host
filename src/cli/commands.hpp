@@ -113,6 +113,8 @@ inline const std::vector<CatalogEntry>& catalog() {
         scalar("fan.enabled","fan_enable","Automatic Zynq temperature fan control (default off); off requests 0% PWM",boolean("enabled"));
         query("fan.status","fan_status","Fan PWM duty, target, startup boost, failsafe and Zynq temperature");
         query("core.temperature","core_temp","Zynq die temperature; invalid measurements remain unknown");
+        scalar("rx.rssi-enabled","rssi_enable","RX RSSI reporting; off after power-up until enabled",boolean("enabled"));
+        query("rx.rssi","rx_rssi","RX1/RX2 symbol RSSI in relative dB (higher is stronger); not calibrated input power; needs rx.rssi-enabled on");
         query("system.info","system_info","Board, firmware and data-format capabilities");
         query("system.status","system_status","RF, temperature, RSSI, stream and fault status");
         auto reference_source=numeric("source","enum",0,1);reference_source.values={{"internal",0},{"external",1}};

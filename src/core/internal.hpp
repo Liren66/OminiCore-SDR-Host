@@ -88,6 +88,8 @@ struct och_device {
     och_fan_status get_fan_status();
     void set_fan_enabled(unsigned enabled);
     och_core_temperature get_core_temperature();
+    och_rx_rssi get_rx_rssi();
+    void set_rx_rssi_enabled(unsigned enabled);
     // system_info? from open; capabilities are fixed for a firmware image.
     std::string capabilities;
     // Cached LO selection: bit0 RX external, bit1 TX external; -1 unknown.

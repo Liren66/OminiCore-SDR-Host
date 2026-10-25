@@ -219,7 +219,7 @@ inline std::string badge(const std::ostream& out, level l) {
 // --- key=value parsing for SDK replies ---------------------------------------
 inline bool status_group(const std::string& name) {
     const auto key = lower(name);
-    return key == "rgb_status" || key == "fan_status" || key == "core_temp" ||
+    return key == "rgb_status" || key == "fan_status" || key == "core_temp" || key == "rx_rssi" ||
            key == "board_capabilities" || key == "system_status" || key == "temperature" || key == "rssi" ||
            key == "rf" || key == "usb_stream" || key == "faults" || key == "rx_resync" ||
            key == "usb_status" || key == "errors" || key == "rx_ready";
