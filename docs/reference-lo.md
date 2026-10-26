@@ -11,7 +11,7 @@
 |---|---|---|
 | `och get clock.ref-source` | `clock_ref_source?` | 0=内部自由运行，1=ADF4002 外部 10 MHz 驯服 |
 | `och set clock.ref-source internal` | `clock_ref_source=0` | 默认状态；关闭锁定指示，电荷泵三态 |
-| `och set clock.ref-source external` | `clock_ref_source=1` | 开启外部参考环路；D5 由 ADF4002 数字锁定输出驱动 |
+| `och set clock.ref-source external` | `clock_ref_source=1` | CH32 确认 PA4 高阻后开启外部参考环路（SDK 先回 `pending=1`，OCH 轮询 `vcxo_status?`）；D5 由 ADF4002 数字锁定输出驱动 |
 | `och get clock.ref-status` | `adf4002_status?` | 配置、GPIO 回读；有效 PPS 的频率 LOCK |
 | `och action clock.ref-test` | `adf4002_self_test!` | 电荷泵三态，D5 闪三次，然后恢复测试前参考选择 |
 | `och get rx.lo-source` | `rx_lo_source?` | RX 内部/外部 LO 与名义 RF 频率 |

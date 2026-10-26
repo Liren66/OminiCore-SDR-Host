@@ -46,6 +46,7 @@ int och_set_reference_source(och_device* d,uint32_t source){return protect([&]{d
 int och_test_reference(och_device* d,och_reference_test_result* c){return protect([&]{device(d);out_struct(c);std::lock_guard<std::mutex> lock(d->state_mutex);*c=d->test_reference();return OCH_OK;});}
 int och_get_pps_status(och_device* d,och_pps_status* c){return protect([&]{device(d);out_struct(c);std::lock_guard<std::mutex> lock(d->state_mutex);*c=d->get_pps_status();return OCH_OK;});}
 int och_set_pps_enabled(och_device* d,uint32_t enabled){return protect([&]{device(d);std::lock_guard<std::mutex> lock(d->state_mutex);d->set_pps_enabled(enabled);return OCH_OK;});}
+int och_get_vcxo_status(och_device* d,och_vcxo_status* c){return protect([&]{device(d);out_struct(c);std::lock_guard<std::mutex> lock(d->state_mutex);*c=d->get_vcxo_status();return OCH_OK;});}
 int och_get_rgb_status(och_device* d,och_rgb_status* c){return protect([&]{device(d);out_struct(c);std::lock_guard<std::mutex> lock(d->state_mutex);*c=d->get_rgb_status();return OCH_OK;});}
 int och_get_fan_status(och_device* d,och_fan_status* c){return protect([&]{device(d);out_struct(c);std::lock_guard<std::mutex> lock(d->state_mutex);*c=d->get_fan_status();return OCH_OK;});}
 int och_get_rx_rssi(och_device* d,och_rx_rssi* c){return protect([&]{device(d);out_struct(c);std::lock_guard<std::mutex> lock(d->state_mutex);*c=d->get_rx_rssi();return OCH_OK;});}

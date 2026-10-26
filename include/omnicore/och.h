@@ -117,6 +117,9 @@ typedef struct och_lo_source_config {
  * Since 0.3.4, lock_known/locked describe PPS frequency monitoring, NOT the
  * ADF4002 hardware lock. A valid, fresh PPS measurement gives lock_known=1;
  * locked=1 means the DATA_CLK error is within +/-1 ppm (inclusive).
+ * In VCXO mode PPS (PPS without 10 MHz, SDK vcxo=1) they instead report the
+ * CH32 PA4 loop: lock_known=1 while the bridge answers, locked as in
+ * och_vcxo_status. Mode REF never reads lock (judge D5), as before.
  * Disabled/absent/invalid/unsupported/failed PPS monitoring gives
  * lock_known=0, locked=-1: hide the lock indicator and judge PLL lock by D5.
  * Reference selection does not require PPS or wait for frequency lock.
@@ -158,6 +161,33 @@ typedef struct och_reference_test_result {
     uint32_t struct_size, gpio_verified, chip_verified, visual_confirmation_required;
     uint32_t reserved[4];
 } och_reference_test_result;
+/* 40 MHz VCTCXO tune node, shared by the ADF4002 charge pump and CH32 PA4
+ * (DAC1). Mode = reference source + 2 * PPS enable (SDK vcxo=1):
+ * OFF both high-Z; REF ADF4002 PLL to 10 MHz; PPS the CH32 drives PA4 from
+ * the Zynq PPS DATA_CLK counts; REF_PPS ADF4002 PLL, PPS is reference only.
+ * The SDK enables the charge pump only after the CH32 reports PA4 high-Z for
+ * the current request; pending=1 until then, error=-116 after a 3 s timeout.
+ * CH32 fields (state..samples) are meaningful only when bridge_alive=1;
+ * otherwise state=UNKNOWN, pa4_driving=-1, dac_code=-1 and the rest zero.
+ * locked is -1 outside mode PPS; in PPS it is 1 when the CH32 phase loop
+ * tracks within +/-1000 ns of the PPS edges. */
+typedef enum och_vcxo_mode {
+    OCH_VCXO_OFF=0, OCH_VCXO_REF=1, OCH_VCXO_PPS=2, OCH_VCXO_REF_PPS=3
+} och_vcxo_mode;
+typedef enum och_vcxo_state {
+    OCH_VCXO_STATE_OFF, OCH_VCXO_STATE_CALIBRATE, OCH_VCXO_STATE_ACQUIRE,
+    OCH_VCXO_STATE_TRACK, OCH_VCXO_STATE_HOLD, OCH_VCXO_STATE_UNKNOWN
+} och_vcxo_state;
+typedef struct och_vcxo_status {
+    uint32_t struct_size, requested_mode, applied_mode, pending;
+    int32_t error;
+    uint32_t pll_enabled, bridge_alive, ack_age_ms;
+    int32_t pa4_driving, dac_code;
+    uint32_t state, samples, request_id;
+    int32_t locked;
+    double k_ppb_per_lsb, error_ppb, phase_ns;
+    uint32_t reserved[8];
+} och_vcxo_status;
 /* Best-effort HD3SS3220 startup snapshot from the existing CH32 EP83 log.
  * NOT a live current measurement, USB-PD contract or LED GPIO readback.
  * No timestamps/boot IDs exist in this firmware. Missing/conflicting logs
@@ -214,13 +244,20 @@ OCH_API int och_set_tx_lo_source(och_device*, uint32_t source);
  * state is readable but cannot be a setter no-op or self-test starting state.
  * Explicitly set internal to recover before testing; no RF reinit is implicit. */
 OCH_API int och_get_reference_status(och_device*, och_reference_status*);
+/* With SDK vcxo=1, selecting external waits up to 5 s for the CH32 PA4
+ * high-Z handshake and fails with OCH_PROTOCOL if the SDK reports an error. */
 OCH_API int och_set_reference_source(och_device*, uint32_t source);
 OCH_API int och_test_reference(och_device*, och_reference_test_result*);
 /* Requires SDK pps_monitor=1 and PPS-capable FPGA. Both calls are safe during
  * streaming (including an RX lease): no stop, reconfiguration or queue reset.
- * Enable persists across handles/RF reinit, but not firmware restart. */
+ * Enable persists across handles/RF reinit, but not firmware restart.
+ * With SDK vcxo=1 and internal reference, enabling PPS starts the CH32 PA4
+ * loop: its first calibration steps the 40 MHz oscillator by about 1-2 ppm
+ * for 18 s, and acquisition then pulls it to the PPS frequency. */
 OCH_API int och_get_pps_status(och_device*, och_pps_status*);
 OCH_API int och_set_pps_enabled(och_device*, uint32_t enabled);
+/* Requires SDK vcxo=1. Safe during streaming; no stop or reconfiguration. */
+OCH_API int och_get_vcxo_status(och_device*, och_vcxo_status*);
 /* Board services added in 0.3.5; existing ABI 1 structures are unchanged.
  * RGB defaults on at 15% channel scale; legacy 25% firmware is also supported.
  * Fan automatic control defaults off.

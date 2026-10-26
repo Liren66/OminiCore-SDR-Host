@@ -75,7 +75,7 @@ inline const char* const help_notes[] = {
     "USB2 needs an explicit lower --sample-rate. Run och info for measured references; the 30.72M streaming examples target USB3.",
     "RX strips every complete 16 KiB preamble; gaps and epochs go to the metadata sidecar. Existing captures need --overwrite.",
     "Finite-file EOF has no device end-of-burst acknowledgement: the tail can report TX underflow/starvation, and USB completion is not DAC completion.",
-    "No timed transmission, hardware timestamps or PPS-scheduled streaming. PPS is a frequency monitor only.",
+    "No timed transmission, hardware timestamps or PPS-scheduled streaming. PPS without 10M steers the 40M oscillator through the CH32 DAC; with 10M it is a frequency check only.",
     "Power data come from the HD3SS3220 startup log, not live current or LED readback; unknown supports_3a is null in JSON.",
 };
 inline void print_help(std::ostream& out) {

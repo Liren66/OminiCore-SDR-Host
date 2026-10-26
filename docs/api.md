@@ -173,7 +173,7 @@ och_rx_acquire 返回当前 wire 格式的租借，容量单位为字节，与 a
 
 send 可能只接受部分样本；一旦接受了样本就返回 OCH_OK，调用方始终按 accepted 消费对应前缀，再重试剩余部分，不能重发整块。TIMEOUT 表示期限内未接受样本或因协调重配置暂时中断，不等于永久断开。
 
-start 前 send 只预填不发射。停止后不会因为后来提交数据自动开启。flush 对齐补零并等待主机队列与 OUT 完成；补零数量见 tx_padding_samples。它不提供 DAC 播放完成的硬件时刻，本版不支持 timed TX、PPS 对齐的采样时间、硬件 timestamps 或跨设备相干同步。独立的 PPS 频率监控接口为 `och_set_pps_enabled` 和 `och_get_pps_status`，详见 [PPS API](pps.md)。
+start 前 send 只预填不发射。停止后不会因为后来提交数据自动开启。flush 对齐补零并等待主机队列与 OUT 完成；补零数量见 tx_padding_samples。它不提供 DAC 播放完成的硬件时刻，本版不支持 timed TX、PPS 对齐的采样时间、硬件 timestamps 或跨设备相干同步。独立的 PPS 接口为 `och_set_pps_enabled`、`och_get_pps_status` 和 `och_get_vcxo_status`（内部参考时 PPS 经 CH32 PA4 驯服 40 MHz），详见 [PPS API](pps.md)。
 
 有限文件 EOF 的 flush 完成与 stop 关闭硬件之间没有设备端 end-of-burst 握手。此时 FIFO 排空可能触发 tx_underflow，应用队列已结束也可能触发 TX_STARVED；事件及计数原样保留。调用方应把“已结束供应后的尾部欠供”和“预期连续供应期间的欠供”分开记录，不能仅据错误计数判定持续流中段丢样，也不能把全部 USB 完成解释为精确定长 DAC 播放成功。若业务需要精确 burst 结束点，必须增加设备端协议/硬件能力，当前 API 不提供该保证。
 

@@ -97,6 +97,9 @@ public:
         och_pps_status c{}; c.struct_size=sizeof(c); check(och_get_pps_status(handle_,&c)); return c;
     }
     void set_pps_enabled(bool enabled) { check(och_set_pps_enabled(handle_,enabled?1u:0u)); }
+    och_vcxo_status vcxo_status() const {
+        och_vcxo_status c{}; c.struct_size=sizeof(c); check(och_get_vcxo_status(handle_,&c)); return c;
+    }
     och_rgb_status rgb_status() const {
         och_rgb_status c{}; c.struct_size=sizeof(c); check(och_get_rgb_status(handle_,&c)); return c;
     }

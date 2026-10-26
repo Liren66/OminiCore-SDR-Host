@@ -89,10 +89,11 @@ TX1、TX2 各有两个 tone，全部 12 个属性都可 get/set。频率以整�
 | `clock.chain` | get | 参考时钟和 RX/TX 各 6 级时钟链，Hz；完整链设置走 `och clock` | `clock_chain?` |
 | `clock.sample-rate` | get/set | 整数 Hz，1..61,440,000；共享链生成、校验，受 FIR 限制 | 查询 `rx_samp_freq?`；设置 `clock_sample_rate=` |
 | `clock.ref-source` | get/set | `internal`/`0` 自由运行、`external`/`1` ADF4002 外部 10 MHz 驯服；AD9361 仍为 40 MHz | `clock_ref_source?` / `=` |
-| `clock.ref-status` | get | 参考配置、GPIO 回读；有效 PPS 显示 ±1 ppm 频率 LOCK，无 PPS 隐藏 | `adf4002_status?` |
+| `clock.ref-status` | get | 参考配置、GPIO 回读；仅 PPS 时 LOCK 来自 CH32 环路，10M+PPS 时为 ±1 ppm 频率 LOCK，无 PPS 隐藏 | `adf4002_status?` |
 | `clock.ref-test` | action | D5 闪三次后恢复选源；需人工确认，不能自动证明芯片通信/锁定 | `adf4002_self_test!` |
-| `pps.input-enabled` | get/set | `on`/`off` 或 `0`/`1`，默认关闭；仅频率监控，不调节时钟 | `pps_input_en?` / `=` |
+| `pps.input-enabled` | get/set | `on`/`off` 或 `0`/`1`，默认关闭；内部参考时由 CH32 PA4 DAC 按 PPS 驯服 40 MHz，外部 10 MHz 时仅作参考 | `pps_input_en?` / `=` |
 | `pps.status` | get | 输入状态、DATA_CLK 测量频率/频偏；无输入不提供有效频率 | `pps_status?` |
+| `clock.vcxo-status` | get | 40 MHz 调谐模式（0 都不用/1 10M/2 PPS/3 10M+PPS）、ADF4002 与 PA4 归属、CH32 PPS 环路状态 | `vcxo_status?` |
 | `host.protocol` | get | 控制封装版本和能力 | `host_protocol?` |
 | `system.help` | get | SDK 自带完整命令帮助；原单位 | `help?` |
 | `system.info` | get | 固件、通道、数据格式、恢复能力 | `system_info?` |

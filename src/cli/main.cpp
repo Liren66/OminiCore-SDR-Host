@@ -48,7 +48,10 @@ std::string monitor_reply(och::device& device,const std::string& command,const s
     if(!monitor_view::applies(command))return raw;
     try {
         const auto pps=device.pps_status();
-        return monitor_view::reply(raw,&pps);
+        // Older SDKs have no vcxo_status?; keep the PPS-only display for them.
+        och_vcxo_status vcxo{};bool has_vcxo=false;
+        try {vcxo=device.vcxo_status();has_vcxo=true;} catch(const och::error&) {}
+        return monitor_view::reply(raw,&pps,has_vcxo?&vcxo:nullptr);
     } catch(const och::error&) {
         // An optional monitor must not block external-reference selection.
         // Explicit PPS commands still surface monitoring errors to the caller.
@@ -1000,6 +1003,9 @@ int execute(const options& opt) {
             if(opt.command=="set")d.set_pps_enabled(cmd.back()=='1');
             else (void)d.pps_status();
             raw_reply=d.command(canonical=="pps.status"?"pps_status?":"pps_input_en?");
+        }else if(canonical=="clock.vcxo-status") {
+            (void)d.vcxo_status(); // capability and consistency check
+            raw_reply=d.command("vcxo_status?");
         }else if(canonical=="rx.dc-correction" || canonical=="rx.iq-correction") {
             const bool dc=canonical=="rx.dc-correction";
             if(opt.command=="set") {

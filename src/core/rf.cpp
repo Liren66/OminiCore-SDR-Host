@@ -1,6 +1,8 @@
 #include "internal.hpp"
 #include <charconv>
+#include <chrono>
 #include <sstream>
+#include <thread>
 using namespace och::core;
 namespace {
 std::string field(const std::string& s,const std::string& name) {
@@ -171,6 +173,47 @@ och_pps_status read_pps_status(och_device& d) {
     }
     return c;
 }
+och_vcxo_status read_vcxo_status(och_device& d) {
+    const auto text=d.command("vcxo_status?");och_vcxo_status c{};c.struct_size=sizeof c;
+    c.requested_mode=u32(field(text,"requested_mode"));c.applied_mode=u32(field(text,"applied_mode"));
+    c.pending=u32(field(text,"pending"));const auto error=integer(field(text,"error"));
+    c.pll_enabled=u32(field(text,"pll"));c.bridge_alive=u32(field(text,"bridge"));c.ack_age_ms=u32(field(text,"ack_age_ms"));
+    const auto pa4=integer(field(text,"pa4"));const auto dac=integer(field(text,"dac"));
+    const char* states[]={"off","cal","acq","track","hold"};
+    const auto state=field(text,"state");c.state=OCH_VCXO_STATE_UNKNOWN;
+    for(unsigned i=0;i<5;++i)if(state==states[i])c.state=i;
+    const auto k=integer(field(text,"k_mppb")),err=integer(field(text,"err_mppb")),phase=integer(field(text,"phase_ns"));
+    c.samples=u32(field(text,"samples"));const auto locked=integer(field(text,"locked"));c.request_id=u32(field(text,"req"));
+    require(c.requested_mode<=3&&c.applied_mode<=3&&c.pending<=1&&c.pll_enabled<=1&&c.bridge_alive<=1&&
+            c.pll_enabled==(c.applied_mode&1U)&&(c.applied_mode>>1)==(c.requested_mode>>1),
+            OCH_PROTOCOL,"invalid VCXO mode flags");
+    require(error<=0&&error>=INT32_MIN,OCH_PROTOCOL,"invalid VCXO error code");
+    require(c.bridge_alive?(pa4==0||pa4==1)&&dac>=0&&dac<=4095&&c.state!=OCH_VCXO_STATE_UNKNOWN:
+            pa4==-1&&dac==-1&&c.state==OCH_VCXO_STATE_UNKNOWN&&!k&&!err&&!phase&&!c.samples,
+            OCH_PROTOCOL,"CH32 VCXO fields contradict bridge presence");
+    require(c.requested_mode==OCH_VCXO_PPS?(locked==0||locked==1):locked==-1,OCH_PROTOCOL,"invalid VCXO lock flag");
+    require(k>=INT32_MIN&&k<=INT32_MAX&&err>=INT32_MIN&&err<=INT32_MAX&&phase>=INT32_MIN&&phase<=INT32_MAX,
+            OCH_PROTOCOL,"CH32 VCXO measurement out of range");
+    c.error=static_cast<int32_t>(error);c.pa4_driving=static_cast<int32_t>(pa4);c.dac_code=static_cast<int32_t>(dac);
+    c.locked=static_cast<int32_t>(locked);
+    c.k_ppb_per_lsb=static_cast<double>(k)/1000.0;c.error_ppb=static_cast<double>(err)/1000.0;c.phase_ns=static_cast<double>(phase);
+    return c;
+}
+// The SDK finishes an external-reference request in its main loop, after the
+// CH32 confirms PA4 high-Z (3 s firmware timeout). Poll until it is settled.
+och_vcxo_status settle_vcxo(och_device& d) {
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+    for(;;) {
+        const auto s=read_vcxo_status(d);
+        if(!s.pending) {
+            require(!s.error,OCH_PROTOCOL,"SDK VCXO mode change failed (error "+std::to_string(s.error)+
+                "); the CH32 bridge firmware must acknowledge PA4 high-Z before the ADF4002 charge pump is enabled");
+            return s;
+        }
+        require(std::chrono::steady_clock::now()<deadline,OCH_TIMEOUT,"SDK VCXO mode change still pending after 5 s");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+}
 }
 bool och_device::supports_capability(const char* key){
     if(capabilities.empty())capabilities=command("system_info?");
@@ -192,6 +235,12 @@ void och_device::set_pps_enabled(unsigned enabled) {
     // or invalidate RF configuration, even if monitoring itself fails.
     command("pps_input_en="+std::to_string(enabled));
     require(read_pps_status(*this).enabled==enabled,OCH_PROTOCOL,"PPS enable readback mismatch");
+    // With the internal reference this starts/stops the CH32 PA4 loop, which
+    // the SDK hands over without touching streams or the RF configuration.
+    if(supports_capability("vcxo"))(void)settle_vcxo(*this);
+}
+och_vcxo_status och_device::get_vcxo_status() {
+    require_capability("vcxo");return read_vcxo_status(*this);
 }
 och_rx_rssi och_device::get_rx_rssi() {
     och_rx_rssi c{};c.struct_size=sizeof c;
@@ -269,6 +318,15 @@ och_reference_status och_device::get_reference_status() {
     // Monitoring is optional. Its absence/failure must not make a healthy
     // reference selection fail. Explicit get_pps_status still reports errors.
     try {
+        // PPS without 10 MHz: the CH32 PA4 phase loop is the lock source.
+        // 10 MHz only stays unreadable (D5); 10 MHz + PPS keeps the +/-1 ppm check.
+        if(supports_capability("vcxo")) {
+            const auto v=read_vcxo_status(*this);
+            if(v.requested_mode==OCH_VCXO_PPS) {
+                status.lock_known=v.bridge_alive;status.locked=v.bridge_alive?v.locked:-1;
+                return status;
+            }
+        }
         const auto pps=get_pps_status();
         status.lock_known=pps.lock_known;status.locked=pps.locked;
     } catch(const Failure&) {}
@@ -281,6 +339,7 @@ void och_device::set_reference_source(unsigned source) {
     reconfigure([&] {
         const bool was=configured;configured=false;transport_dirty=true;
         command("clock_ref_source="+std::to_string(source),15000);
+        if(supports_capability("vcxo"))(void)settle_vcxo(*this);
         const auto after=read_reference_status(*this);
         require(reference_healthy(after)&&after.source==source&&after.led_mode==source,OCH_PROTOCOL,"reference source readback is unhealthy or mismatched");
         configured=was;

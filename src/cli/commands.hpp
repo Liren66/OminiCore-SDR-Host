@@ -119,11 +119,12 @@ inline const std::vector<CatalogEntry>& catalog() {
         query("system.status","system_status","RF, temperature, RSSI, stream and fault status");
         auto reference_source=numeric("source","enum",0,1);reference_source.values={{"internal",0},{"external",1}};
         scalar("clock.ref-source","clock_ref_source",
-            "Free-running internal 40 MHz oscillator or ADF4002 discipline from external 10 MHz; lock is not readable",reference_source);
-        query("clock.ref-status","adf4002_status","Reference configuration and GPIO checks; LOCK uses valid PPS frequency within +/-1 ppm; PLL lock is D5 only");
+            "Free-running internal 40 MHz oscillator or ADF4002 discipline from external 10 MHz (after the CH32 releases PA4); lock is not readable",reference_source);
+        query("clock.ref-status","adf4002_status","Reference configuration and GPIO checks; LOCK: CH32 PPS loop (PPS only) or PPS within +/-1 ppm (10M+PPS); PLL lock is D5 only");
         action("clock.ref-test","adf4002_self_test","Flash D5 three times and restore source; GPIO readback only, human LED confirmation required");
-        scalar("pps.input-enabled","pps_input_en","Enable PPS frequency monitoring only (default off); never adjusts clocks",boolean("enabled"));
+        scalar("pps.input-enabled","pps_input_en","PPS input (default off); with internal reference the CH32 PA4 DAC disciplines 40 MHz, with external 10 MHz it is a reference check only",boolean("enabled"));
         query("pps.status","pps_status","PPS presence, DATA_CLK frequency and +/-1 ppm frequency LOCK; hidden without a valid measurement");
+        query("clock.vcxo-status","vcxo_status","40 MHz tune mode (0 off, 1 10M, 2 PPS, 3 10M+PPS), ADF4002/PA4 ownership and CH32 PPS loop state");
         action("rf.reinit","rf_reinit","Reinitialize RF and PL peripherals from the SDK saved configuration; interrupts streams");
         action("digital.self-test","digital_self_test","Run the FPGA/AD9361 digital interface self-test while streams are stopped");
         auto bits=numeric("bits","bit mask",0,127); bits.hexadecimal=true;

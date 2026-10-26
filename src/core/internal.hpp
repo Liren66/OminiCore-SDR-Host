@@ -83,6 +83,7 @@ struct och_device {
     och_reference_test_result test_reference();
     och_pps_status get_pps_status();
     void set_pps_enabled(unsigned enabled);
+    och_vcxo_status get_vcxo_status();
     och_rgb_status get_rgb_status();
     void set_rgb_enabled(unsigned enabled);
     och_fan_status get_fan_status();

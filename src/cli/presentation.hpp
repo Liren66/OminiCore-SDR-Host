@@ -649,7 +649,7 @@ inline void clocks(const och_clock_config& c, std::ostream& out) {
     out << '\n';
     if (c.rx_hz[0] != c.tx_hz[0] || c.rx_hz[5] != c.tx_hz[5])
         status(level::warn, "Reported BBPLL or sample rates differ between directions.", out);
-    note("The AD9361 reference stays 40 MHz; an external 10 MHz disciplines the oscillator, PPS only monitors it.", out);
+    note("The AD9361 reference stays 40 MHz; an external 10 MHz disciplines the oscillator, otherwise PPS can steer it via the CH32 DAC.", out);
 }
 inline void event(const och_event& e, double elapsed_seconds, std::ostream& out) {
     const std::string message = detail::text(e.message);

@@ -37,6 +37,8 @@ CH32 的协议 v4 是使用原有诊断能力，不代表主机安装器为您�
 
 0.3.3 新增 [PPS 频率监控](pps.md)，要求修订号 2 的 PPS IP 比特流和 `pps_monitor=1` SDK。冷启动默认关闭，缺少硬件或固件支持时返回 OCH_UNSUPPORTED。新增 API 保持 ABI 1，仍不修改 CH32 固件。
 
+PA4 调谐硬件（CH32 PA4 与 ADF4002 CP 同接 40 MHz VCTCXO 调谐端）需要三端同时更新：SDK `vcxo=1 pps_adjustment=1`、带 PA4 握手的 CH32 Bridge 固件、本版 OCH。`och_get_vcxo_status` 在旧 SDK 上返回 OCH_UNSUPPORTED，其余接口对旧 SDK 保持原行为。旧 Bridge 固件把 PA4 当 LED 推挽驱动且不回应握手，新 SDK 因此拒绝打开 ADF4002 电荷泵（`error=-116`），外部 10 MHz 设置失败而不会与 PA4 冲突；旧固件也不得用于新硬件的仅 PPS 模式。
+
 ## 0.3.5 板级 RGB 与风扇温控
 
 新增 RGB 开关/状态、风扇温控开关/状态和 Zynq 核心温度查询。使用新 FPGA BOARD_CTRL_AXI 及新版 SDK，能力标志为 `board_rgb=1 fan_control=1 core_temp=1`。当前 SDK 默认 RGB 开启、亮度 15%，风扇温控关闭；OCH 0.3.6 同时兼容旧版 25% 固件，亮度以设备回报为准；不改变已有 C ABI 结构或停止 IQ 流。详见 [板级控制及接口](board-control.md)。

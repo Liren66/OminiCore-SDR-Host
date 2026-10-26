@@ -109,7 +109,7 @@ JSON 保持旧字段，新增内容如下：
 | och help | 查看命令及参数 |
 | och version --json | 查询软件及 ABI 版本 |
 
-规范名称使用小写点分组，例如 rx.lo-frequency、tx1.attenuation。get/set/action 会按 [完整目录](commands.md) 校验参数并转换到 SDK 单位，频率为 Hz、增益/衰减为 dB、DDS scale 为归一化比例。单值回读也转换成规范单位；结构化状态内容保留固件字段。JSON 的 reply 是规范结果，raw_reply 保留原回应，sdk_command 是实际命令。PPS 监控使用 `pps.input-enabled` 和 `pps.status`；旧固件缺少 `pps_monitor=1` 时明确报不支持，详见 [PPS](pps.md)。do 是 action 的兼容别名。
+规范名称使用小写点分组，例如 rx.lo-frequency、tx1.attenuation。get/set/action 会按 [完整目录](commands.md) 校验参数并转换到 SDK 单位，频率为 Hz、增益/衰减为 dB、DDS scale 为归一化比例。单值回读也转换成规范单位；结构化状态内容保留固件字段。JSON 的 reply 是规范结果，raw_reply 保留原回应，sdk_command 是实际命令。PPS 使用 `pps.input-enabled` 和 `pps.status`，40 MHz 调谐模式和 CH32 环路状态用 `clock.vcxo-status`；旧固件缺少 `pps_monitor=1`/`vcxo=1` 时明确报不支持，详见 [PPS](pps.md)。do 是 action 的兼容别名。
 
 原 SDK 名称的 get/set 仍作为原始透传兼容：och set rx_lo_freq 1000 的 1000 为 MHz，och set tx1_attenuation 10000 的 10000 为 mdB。原始接口不转换数值后缀或返回单位。每次只允许一条命令，拒绝换行批量注入；固件拒绝命令时返回失败。新程序优先使用规范名称。
 

@@ -32,6 +32,7 @@ OmniCore Host 是 **OmniCoreSDR**（AD9361 + Zynq + CH32H417 USB 桥）的主机
 | 采样率就近 | BBPLL 小数分频无法精确实现的速率自动改用最近的整 Hz 速率并提示，如 11.2 MSPS → 11200011 Hz |
 | 运行中改参 | 不销毁流句柄，协调暂停 → 应用配置 → 恢复 |
 | 校正与参考 | RX 直流 / IQ 跟踪；ADF4002 内/外 10 MHz 参考；RX/TX 独立外部 LO |
+| PPS 驯服 | 仅 PPS 时由 CH32 PA4 DAC 驯服 40 MHz 晶振（相位锁定 ±1 µs）；与 10 MHz 同用时仅作频偏校验 |
 | 监控与板控 | PPS 频偏监控（±1 ppm LOCK）、RGB 状态灯、按温度调速的风扇 |
 | USB 链路 | USB 3.0 SuperSpeed；USB 2.0 High-Speed 适用于低采样率 |
 
@@ -117,8 +118,9 @@ och config --sample-rate 30.72M --lo-frequency 1G --bandwidth 18M --gain 30
 och set rx.dc-correction on          # RX 直流跟踪
 och set clock.ref-source external    # 外部 10 MHz 参考（J3）
 och set rx.lo-source external        # 外部 LO（RX: J11，TX: J10，输入为 2 倍 RF 频率）
-och set pps.input-enabled on         # PPS 监控（J6）
+och set pps.input-enabled on         # PPS 输入（J6）；无 10 MHz 时驯服晶振
 och get pps.status
+och get clock.vcxo-status            # 调谐模式与 CH32 环路状态
 
 och fir rx load filter.ftr && och fir rx on
 och get core.temperature
@@ -257,6 +259,7 @@ USB2 测试的 TX 为 1 MHz 正弦、幅度 0.25、衰减 60 dB。启动后 1 �
 | 参考与外部 LO | Windows | 参考 / LO 11 项检查与 3 次运行中切换通过；ADF4002 D5 自检闪烁序列确认 |
 | RX 校正 | Windows | DC / IQ 跟踪 18 项检查与 6 次运行中切换通过 |
 | PPS 监控 | Windows | 真实 PPS 下 30.72 MSPS 读数 122880000–122880001 Hz，频偏收敛至 0–0.008 ppm |
+| PPS 驯服晶振 | Windows | 4 种调谐模式与 300 次参考切换握手零丢失；空闲、RX 2×2 与 IQ8 全双工各 2 分钟全程锁定，相位 ≤ 158 ns，频偏 ≤ 0.016 ppm |
 | SDK 集成 | Linux | 独立 C / C++ CMake 工程链接发布包并运行；移动安装目录后仍可运行 |
 
 > [!NOTE]
